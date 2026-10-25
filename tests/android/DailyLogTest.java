@@ -37,7 +37,9 @@ public class DailyLogTest {
         context=RuntimeEnvironment.getApplication();previous=TimeZone.getDefault();TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         File data=new File(context.getFilesDir(),"daily-timeline");if(data.exists())for(File f:data.listFiles())f.delete();
         Provider.directory=new File(context.getCacheDir(),"daily-log-tests");Provider.directory.mkdirs();
-        provider=new Provider();ShadowContentResolver.registerProviderInternal("media",provider);
+        provider=new Provider();android.content.pm.ProviderInfo info=new android.content.pm.ProviderInfo();
+        info.authority="media";info.packageName=context.getPackageName();info.applicationInfo=context.getApplicationInfo();info.exported=true;
+        provider.attachInfo(context,info);ShadowContentResolver.registerProviderInternal("media",provider);
     }
     @After public void teardown(){TimeZone.setDefault(previous);}
     File timeline(String name,long start,long end)throws Exception{
