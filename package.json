@@ -1,6 +1,6 @@
 {
   "name": "life-blackbox-recorder",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Life Blackbox Recorder - \uc800\uc804\ub825 \uc77c\uc0c1 \ub300\ud654 \ub179\uc74c\uae30 (Capacitor Android)",
   "scripts": {
@@ -8,7 +8,8 @@
     "sync": "node scripts/patch-android.mjs && cap sync android",
     "apk": "cd android && gradlew assembleDebug",
     "check": "node scripts/check-source.mjs",
-    "test": "node tests/native-ui.mjs && node tests/patch-android.mjs"
+    "test": "node tests/native-ui.mjs && node tests/patch-android.mjs",
+    "test:timeline": "mkdir -p /tmp/lbb-timeline-tests && javac -d /tmp/lbb-timeline-tests native/TimelineSegments.java tests/TimelineSegmentsTest.java && java -cp /tmp/lbb-timeline-tests com.lifeblackbox.recorder.TimelineSegmentsTest"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

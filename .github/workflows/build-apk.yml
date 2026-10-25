@@ -1,8 +1,8 @@
-name: Build Life Recorder v2 APK
+name: Build Life Recorder v2.2 APK
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "feature/v2.2-daily-ai-export"]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,7 @@ jobs:
         run: |
           npm run check
           npm test
+          npm run test:timeline
 
       - name: Install pinned Capacitor dependencies
         run: npm install
@@ -51,12 +52,12 @@ jobs:
           ./gradlew assembleDebug lintDebug signingReport --no-daemon --stacktrace
 
       - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.2.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeRecorder-v2-APK
-          path: LifeRecorder-v2.apk
+          name: LifeRecorder-v2.2-APK
+          path: LifeRecorder-v2.2.apk
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -64,3 +65,4 @@ jobs:
           name: LifeRecorder-v2-build-reports
           path: android/app/build/reports/
           if-no-files-found: ignore
+

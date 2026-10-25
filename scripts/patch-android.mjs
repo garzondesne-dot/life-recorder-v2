@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -75,6 +75,7 @@ if (!m.includes('.BlackboxService')) {
     </application>`);
 }
 m = m.replace(/android:stopWithTask="true"/g, 'android:stopWithTask="false"');
+if (!m.includes('com.openai.chatgpt')) m=m.replace('</manifest>', '<queries><package android:name="com.openai.chatgpt"/><package android:name="com.anthropic.claude"/></queries></manifest>');
 if (!m.includes('com.google.android.apps.bard')) m = m.replace('</manifest>', `
     <queries><package android:name="com.google.android.apps.bard" /></queries>
 </manifest>`);
@@ -88,7 +89,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 3').replace(/versionName "[^"]*"/, 'versionName "2.1.0"');
+g = g.replace(/versionCode \d+/, 'versionCode 4').replace(/versionName "[^"]*"/, 'versionName "2.2.0"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
@@ -108,4 +109,5 @@ android {
 `;
   fs.writeFileSync(gradleFile, g);
 }
+
 
