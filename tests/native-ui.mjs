@@ -53,3 +53,31 @@ assert.ok(calls.find(c=>c[0]==='share')[1].prompt.includes('담당자'));
 vm.runInContext("exportState.files=[{name:'LBB_20200101_090000.m4a',created:1,uri:'content://old'}];rebuildExport()",context);
 assert.equal(vm.runInContext('exportState.batches.length',context),0,'other dates must not be exported');
 console.log('Daily date filter / prompt / selected AI target: PASS');
+
+// The IndexedDB view must follow a successful native snapshot, retaining browser audio.
+const rows=new Map([
+  ['deleted.m4a',{name:'deleted.m4a',uri:'content://gone',native:true,created:1}],
+  ['present.m4a',{name:'present.m4a',uri:'content://present',native:true,created:1}],
+  ['browser.webm',{name:'browser.webm',created:1,size:1}]
+]);
+context.rows=rows;
+vm.runInContext(`DB.db={transaction(store,mode){
+  const tx={objectStore(){return {
+    getAll(){const r={result:[...rows.values()]};Promise.resolve().then(()=>tx.oncomplete());return r;},
+    put(v){rows.set(v.name,v);Promise.resolve().then(()=>tx.oncomplete());return {};},
+    delete(k){rows.delete(k);Promise.resolve().then(()=>tx.oncomplete());return {};}
+  };}};return tx;
+}};`,context);
+BB.listRecordings=async()=>({files:[{name:'present.m4a',uri:'content://present',created:1}]});
+await vm.runInContext('refreshFiles()',context);
+assert.equal(rows.has('deleted.m4a'),false);
+assert.equal(rows.has('present.m4a'),true);
+assert.equal(rows.has('browser.webm'),true);
+BB.listRecordings=async()=>{throw Error('temporary provider failure');};
+await vm.runInContext('refreshFiles()',context);
+assert.equal(rows.has('present.m4a'),true);
+BB.listRecordings=async()=>({});
+await vm.runInContext('refreshFiles()',context);
+assert.equal(rows.has('present.m4a'),true);
+console.log('Native snapshot pruning / browser preservation / failed snapshot retention: PASS');
+

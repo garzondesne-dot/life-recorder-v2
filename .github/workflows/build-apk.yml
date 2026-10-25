@@ -1,8 +1,8 @@
-name: Build Life Recorder v2.2 APK
+name: Verify v2.3 foundation
 
 on:
   push:
-    branches: [main, master, "feature/v2.2-daily-ai-export"]
+    branches: [main, master, "feature/v2.3-foundation"]
   workflow_dispatch:
 
 permissions:
@@ -30,6 +30,7 @@ jobs:
           npm run check
           npm test
           npm run test:timeline
+          npm run test:publication
 
       - name: Install pinned Capacitor dependencies
         run: npm install
@@ -49,7 +50,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug lintDebug signingReport --no-daemon --stacktrace
+          ./gradlew testDebugUnitTest assembleDebug lintDebug signingReport --no-daemon --stacktrace
 
       - name: Package APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.2.apk

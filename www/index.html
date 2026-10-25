@@ -1140,7 +1140,13 @@ function dateGroupTitle(ts) {
 async function refreshFiles() {
   if (!DB.db) return;
   if(BB){
-    try { const r=await BB.listRecordings(); for(const f of r.files || []) await idbPut('files',{...f,native:true}); }
+    try {
+      const r=await BB.listRecordings();
+      if(!Array.isArray(r.files))throw new Error('잘못된 녹음 목록 응답');
+      const live=new Set(r.files.map(f=>f.uri));
+      for(const old of await idbGetAll('files'))if(old.native&&!live.has(old.uri))await idbDel('files',old.name);
+      for(const f of r.files)await idbPut('files',{...f,native:true});
+    }
     catch(e){toast('파일 목록 확인 실패: '+e.message);}
   }
   const all = (await idbGetAll('files')).filter(f => !/\.(txt|json)$/i.test(f.name)).sort((a, b) => b.created - a.created);
@@ -1242,7 +1248,7 @@ $('modalBackdrop').onclick = e => {
 function syncSettingsUI() {
   $('vadOn').checked = !!cfg.vadOn;
   $('hangoverText').textContent = `${cfg.hangover}초`;
-  $('valSplit').textContent = cfg.splitMin >= 60 ? '1시간' : `${cfg.splitMin}분`;
+  $('valSplit').textContent = cfg.splitMin === 90 ? '1시간 30분' : cfg.splitMin === 120 ? '2시간' : cfg.splitMin >= 60 ? '1시간' : `${cfg.splitMin}분`;
   $('valBitrate').textContent = `${cfg.bitrate / 1000} kbps`;
   $('sleepOn').checked = !!cfg.sleepOn;
   $('sleepStart').value = cfg.sleepStart;
@@ -1266,7 +1272,7 @@ $('btnHangover').onclick = () => {
 };
 
 $('rowSplit').onclick = () => {
-  const list = [[1, '1분 (테스트)'], [15, '15분'], [30, '30분 (권장)'], [60, '1시간']];
+  const list = [[1, '1분 (테스트)'], [15, '15분'], [30, '30분 (권장)'], [60, '1시간'], [90, '1시간 30분'], [120, '2시간']];
   openSheet('자동 분할 간격', list.map(([v, lbl]) => ({
     label: lbl, selected: cfg.splitMin === v,
     onClick: () => { cfg.splitMin = v; saveCfg(); syncSettingsUI(); if (A.rec) R.nextSplit = nextBoundary(Date.now(), v); }

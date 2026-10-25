@@ -16,7 +16,7 @@ final class DailyLog {
     static String dateTime(long t){return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX",Locale.US).format(new Date(t));}
     static String offset(long n){return String.format(Locale.US,"%02d:%02d:%02d.%03d",n/3600000,(n/60000)%60,(n/1000)%60,n%1000);}
     static AtomicFile manifest(Context c,String date){File dir=new File(c.getFilesDir(),"daily-timeline");dir.mkdirs();return new AtomicFile(new File(dir,date+".json"));}
-    static JSONObject read(Context c,String date)throws Exception{AtomicFile f=manifest(c,date);return f.getBaseFile().exists()?new JSONObject(new String(f.readFully(),StandardCharsets.UTF_8)):new JSONObject();}
+    static JSONObject read(Context c,String date)throws Exception{AtomicFile f=manifest(c,date);try{return new JSONObject(new String(f.readFully(),StandardCharsets.UTF_8));}catch(FileNotFoundException e){if(f.getBaseFile().exists()||new File(f.getBaseFile().getPath()+".bak").exists())throw e;return new JSONObject();}}
     static void write(AtomicFile f,JSONObject o)throws Exception{FileOutputStream out=null;try{out=f.startWrite();out.write(o.toString().getBytes(StandardCharsets.UTF_8));f.finishWrite(out);}catch(Exception e){if(out!=null)f.failWrite(out);throw e;}}
     static synchronized void record(Context c,File journal,String name,long created,long duration)throws Exception{
         File map=new File(journal.getAbsolutePath()+".timeline");Map<String,JSONArray> days=new TreeMap<>();
