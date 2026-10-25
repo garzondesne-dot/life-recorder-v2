@@ -59,13 +59,14 @@ public final class NativeRecorder implements Runnable {
     }
     private void sleepReminderBarrier(long cutoff){
         android.content.SharedPreferences settings=ctx.getSharedPreferences("recorder-settings",0);if(!settings.getBoolean("reminderOn",false))return;
+        final String reminderDate=ReminderPolicy.recordingDay(cutoff,cfg.optString("sleepStart","23:00"));
         PowerManager.WakeLock saveLock=((PowerManager)ctx.getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"LifeRecorder::reminder-save");saveLock.acquire(120000);
         publisher.submit(()->{try{
             File[] pending=new File(ctx.getFilesDir(),"pending").listFiles((d,n)->n.endsWith(".aac"));
             if(pending!=null)for(File f:pending)if(f.length()>0)return;
             android.content.SharedPreferences p=ctx.getSharedPreferences("recorder-settings",0);
             if(!p.getBoolean("reminderOn",false)||!p.getBoolean("sleepOn",false))return;
-            String date=DailyLog.day(cutoff-1);JSONObject snapshot=ExportSnapshot.create(ctx,date,cutoff,RecordingStore.list(ctx));ExportReminder.afterSaved(ctx,snapshot);
+            String date=reminderDate;JSONObject snapshot=ExportSnapshot.create(ctx,date,cutoff,RecordingStore.list(ctx));ExportReminder.afterSaved(ctx,snapshot);
         }catch(Exception e){android.util.Log.e("LifeRecorder","Reminder preparation failed",e);}finally{if(saveLock.isHeld())saveLock.release();}});
     }
     NativeRecorder(BlackboxService s, JSONObject config) { service=s; ctx=s.getApplicationContext(); cfg=validated(config); }
