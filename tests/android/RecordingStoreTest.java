@@ -50,6 +50,11 @@ public class RecordingStoreTest {
         provider.unavailable=false;provider.nullCursor=true;assertEquals(1,RecordingStore.list(context).length());
         provider.nullCursor=false;assertEquals(1,RecordingStore.list(context).length());
     }
+    @Test public void interruptedAtomicIndexRestoresBackup()throws Exception{
+        java.io.File base=new java.io.File(context.getFilesDir(),"recordings-v2.json");
+        assertTrue(base.renameTo(new java.io.File(base.getPath()+".bak")));
+        assertEquals(1,RecordingStore.list(context).length());
+    }
     @Test public void indexingSameUriTwiceIsIdempotent()throws Exception{
         RecordingStore.add(context,"existing.m4a","content://recording-test/1",123,456,true,1000);
         assertEquals(1,RecordingStore.list(context).length());

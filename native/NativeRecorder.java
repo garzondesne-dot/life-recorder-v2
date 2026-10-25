@@ -181,7 +181,13 @@ public final class NativeRecorder implements Runnable {
     }
     static synchronized void publish(Context c,File journal,boolean recovered)throws Exception{
         final android.util.AtomicFile receipt=new android.util.AtomicFile(new File(journal.getPath()+".publish.json"));
-        final JSONObject state=receipt.exists()?new JSONObject(new String(receipt.readFully(),java.nio.charset.StandardCharsets.UTF_8)):new JSONObject();
+        JSONObject loaded;
+        try{loaded=new JSONObject(new String(receipt.readFully(),java.nio.charset.StandardCharsets.UTF_8));}
+        catch(FileNotFoundException e){
+            if(receipt.getBaseFile().exists()||new File(receipt.getBaseFile().getPath()+".bak").exists())throw e;
+            loaded=new JSONObject();
+        }
+        final JSONObject state=loaded;
         if(state.optBoolean("done")){
             if(journal.delete()||!journal.exists())receipt.delete();
             return;

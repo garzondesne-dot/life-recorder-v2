@@ -9,8 +9,12 @@ import java.nio.charset.StandardCharsets;
 final class RecordingStore {
     private static AtomicFile file(Context c){return new AtomicFile(new File(c.getFilesDir(),"recordings-v2.json"));}
     private static JSONArray raw(Context c)throws Exception{
-        AtomicFile f=file(c);if(!f.exists())return new JSONArray();
-        return new JSONArray(new String(f.readFully(),StandardCharsets.UTF_8));
+        AtomicFile f=file(c);
+        try{return new JSONArray(new String(f.readFully(),StandardCharsets.UTF_8));}
+        catch(FileNotFoundException e){
+            if(f.getBaseFile().exists()||new File(f.getBaseFile().getPath()+".bak").exists())throw e;
+            return new JSONArray();
+        }
     }
     static synchronized JSONArray list(Context c)throws Exception{
         JSONArray all=raw(c), kept=new JSONArray();
