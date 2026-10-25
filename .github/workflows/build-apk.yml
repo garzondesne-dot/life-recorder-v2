@@ -54,7 +54,10 @@ jobs:
 
       - name: Render UI previews
         run: |
-          if command -v google-chrome >/dev/null; then node tests/render-preview.mjs; else echo "Chrome unavailable; UI preview skipped"; fi
+          if command -v google-chrome >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y fonts-nanum >/dev/null || echo "Korean font installation unavailable"
+            node tests/render-preview.mjs
+          else echo "Chrome unavailable; UI preview skipped"; fi
 
       - name: Package APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.3.apk

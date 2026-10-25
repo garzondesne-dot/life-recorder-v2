@@ -131,3 +131,12 @@ dependencies {
 `);
 }
 
+
+// Keep launch surfaces true black in both system light and dark modes.
+const stylesFile=path.join(resDst,'values/styles.xml');
+if(fs.existsSync(stylesFile)){
+  let styles=fs.readFileSync(stylesFile,'utf8');
+  styles=styles.replace(/(<item name="windowSplashScreenBackground">)[^<]*/g,'$1@android:color/black');
+  if(!styles.includes('name="windowSplashScreenBackground"')) styles=styles.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/,'$1<item name="windowSplashScreenBackground">@android:color/black</item>');
+  fs.writeFileSync(stylesFile,styles);
+}

@@ -82,6 +82,7 @@ public class RecordingExportPlugin extends Plugin {
                 String value=input.getString(i);Long size=snapshotUris.get(value);
                 if(size==null||!value.startsWith("content://"))throw new Exception("고정한 내보내기 목록에 없는 파일입니다");
                 if(!"claude".equals(ai)&&size>limit)throw new Exception("선택한 AI의 파일 크기 한도를 초과합니다");
+                if(!"claude".equals(ai))try(android.os.ParcelFileDescriptor fd=getContext().getContentResolver().openFileDescriptor(Uri.parse(value),"r")){if(fd==null)throw new Exception("원본 파일을 읽을 수 없습니다");}
                 if(seen.add(value))streams.add(Uri.parse(value));
             }
             Uri daily=ExportSnapshot.logUri(getContext(),snapshot);

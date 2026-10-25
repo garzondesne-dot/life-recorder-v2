@@ -21,7 +21,7 @@ final class ExportReminder {
   PendingIntent action=PendingIntent.getActivity(c,2301,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
   Notification n=new NotificationCompat.Builder(c,CHANNEL).setSmallIcon(c.getResources().getIdentifier("ic_stat_wave","drawable",c.getPackageName()))
    .setContentTitle("오늘의 기록이 준비됐어요").setContentText("오디오 "+count+"개와 하루 타임로그를 AI로 보내볼까요?")
-   .setContentIntent(action).addAction(0,"내보내기 준비",action).setAutoCancel(true).build();
-  nm.notify(2301,n);p.edit().putString("lastReminderDate",date).apply();
+   .setOnlyAlertOnce(true).setContentIntent(action).addAction(0,"내보내기 준비",action).setAutoCancel(true).build();
+  nm.notify(2301,n);p.edit().putString("lastReminderDate",date).commit();
  }
 }
