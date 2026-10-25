@@ -284,8 +284,10 @@ public class BlackboxServicePlugin extends Plugin {
         NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(call.getObject("config",new JSObject()));call.resolve();
     }
     @PluginMethod public void listRecordings(PluginCall call) {
-        try {JSObject o=new JSObject();o.put("files",RecordingStore.list(getContext()));call.resolve(o);}
-        catch(Exception e){call.reject(e.getMessage());}
+        new Thread(()->{
+            try {JSObject o=new JSObject();o.put("files",RecordingStore.list(getContext()));call.resolve(o);}
+            catch(Exception e){call.reject(e.getMessage());}
+        },"Recording-Index").start();
     }
     @PluginMethod public void openRecording(PluginCall call) {
         try {
