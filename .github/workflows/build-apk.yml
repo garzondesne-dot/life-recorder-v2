@@ -1,0 +1,66 @@
+name: Build Life Recorder v2 APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Check JavaScript
+        run: |
+          npm run check
+          npm test
+
+      - name: Install pinned Capacitor dependencies
+        run: npm install
+
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          node scripts/patch-android.mjs
+          npx cap sync android
+
+      - name: Use existing signing certificate
+        run: |
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+
+      - name: Compile, lint and build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug lintDebug signingReport --no-daemon --stacktrace
+
+      - name: Package APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifeRecorder-v2-APK
+          path: LifeRecorder-v2.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LifeRecorder-v2-build-reports
+          path: android/app/build/reports/
+          if-no-files-found: ignore
