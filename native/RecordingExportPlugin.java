@@ -74,24 +74,25 @@ public class RecordingExportPlugin extends Plugin {
         try{
             JSArray input=call.getArray("uris");if(input==null||input.length()==0||input.length()>9)throw new Exception("한 번에 1~9개 파일을 선택해 주세요");
             ArrayList<Uri> streams=new ArrayList<>();Set<String> seen=new HashSet<>();
-            synchronized(allowed){for(int i=0;i<input.length();i++){
-                String value=input.getString(i);Long size=allowed.get(value);
-                if(size==null||!value.startsWith("content://"))throw new Exception("폴더를 다시 선택해 주세요");
-                if(size>MAX_BYTES)throw new Exception("100MB가 넘는 파일이 있습니다. 더 작은 파일을 선택해 주세요");
+            JSONObject snapshot=ExportSnapshot.read(getContext(),call.getString("token",""));
+            Map<String,Long> snapshotUris=new HashMap<>();JSONArray saved=snapshot.getJSONArray("files");
+            for(int i=0;i<saved.length();i++){JSONObject f=saved.getJSONObject(i);snapshotUris.put(f.getString("uri"),f.optLong("size"));}
+            String ai=call.getString("target","gemini");long limit="chatgpt".equals(ai)?512L*1024*1024:100L*1000*1000;
+            for(int i=0;i<input.length();i++){
+                String value=input.getString(i);Long size=snapshotUris.get(value);
+                if(size==null||!value.startsWith("content://"))throw new Exception("고정한 내보내기 목록에 없는 파일입니다");
+                if(!"claude".equals(ai)&&size>limit)throw new Exception("선택한 AI의 파일 크기 한도를 초과합니다");
+                if(!"claude".equals(ai))try(android.os.ParcelFileDescriptor fd=getContext().getContentResolver().openFileDescriptor(Uri.parse(value),"r")){if(fd==null)throw new Exception("원본 파일을 읽을 수 없습니다");}
                 if(seen.add(value))streams.add(Uri.parse(value));
-            }}
-            String date=call.getString("date","");
-            if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("분석할 날짜를 선택해 주세요");
-            Uri daily=DailyLog.publish(getContext(),date);
-            if("claude".equals(call.getString("target","gemini")))streams.clear();
-            streams.add(daily);
+            }
+            Uri daily=ExportSnapshot.logUri(getContext(),snapshot);
+            if("claude".equals(ai))streams.clear();streams.add(daily);
             Intent send=new Intent(streams.size()==1?Intent.ACTION_SEND:Intent.ACTION_SEND_MULTIPLE).setType(streams.size()==1?"text/plain":"*/*");
             String prompt=call.getString("prompt","");if(prompt.length()>30000)throw new Exception("분석 지침이 너무 깁니다");send.putExtra(Intent.EXTRA_TEXT,prompt);
             if(streams.size()==1)send.putExtra(Intent.EXTRA_STREAM,streams.get(0));else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM,streams);
             ClipData clip=ClipData.newUri(getContext().getContentResolver(),"녹음 파일",streams.get(0));
             for(int i=1;i<streams.size();i++)clip.addItem(new ClipData.Item(streams.get(i)));
             send.setClipData(clip);send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            String ai=call.getString("target","gemini");
             String pkg="chatgpt".equals(ai)?"com.openai.chatgpt":"claude".equals(ai)?"com.anthropic.claude":GEMINI;
             Intent target=new Intent(send).setPackage(pkg);
             boolean direct=target.resolveActivity(getContext().getPackageManager())!=null;
@@ -102,6 +103,28 @@ public class RecordingExportPlugin extends Plugin {
             }catch(Exception e){call.reject("공유 화면을 열지 못했습니다. 선택한 AI 앱의 파일 첨부 메뉴에서 첨부해 주세요: "+e.getMessage());}});
         }catch(Exception e){call.reject(e.getMessage());}
     }
+    private final java.util.concurrent.atomic.AtomicBoolean preparing=new java.util.concurrent.atomic.AtomicBoolean();
+    @PluginMethod public void prepareSnapshot(PluginCall call){
+        if(!preparing.compareAndSet(false,true)){call.reject("내보내기를 준비 중입니다");return;}
+        new Thread(()->{try{
+            String date=call.getString("date",DailyLog.day(System.currentTimeMillis()));
+            if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("날짜 형식 오류");
+            NativeRecorder recorder=NativeRecorder.instance;JSONObject result;
+            if(recorder!=null)result=recorder.prepareExport(date).get(120,java.util.concurrent.TimeUnit.SECONDS);
+            else {
+                DailyLog.repairPending(getContext());JSONArray all=RecordingStore.list(getContext());
+                synchronized(allowed){for(JSONObject row:catalog.values())all.put(row);}
+                result=ExportSnapshot.create(getContext(),date,System.currentTimeMillis(),all);
+            }
+            call.resolve(new JSObject(result.toString()));
+        }catch(Exception e){call.reject("내보내기 준비 실패: "+(e.getCause()!=null?e.getCause().getMessage():e.getMessage()));}finally{preparing.set(false);}},"Prepare-Export").start();
+    }
+    @PluginMethod public void restoreSnapshot(PluginCall call){try{call.resolve(new JSObject(ExportSnapshot.read(getContext(),call.getString("token","")).toString()));}catch(Exception e){call.reject("준비 기록이 만료되었습니다. 다시 준비해 주세요");}}
+    @PluginMethod public void openDailyLog(PluginCall call){new Thread(()->{try{
+        Uri uri=DailyLog.publish(getContext(),call.getString("date",DailyLog.day(System.currentTimeMillis())));
+        Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"text/plain").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        getActivity().runOnUiThread(()->{try{getActivity().startActivity(i);call.resolve();}catch(Exception e){call.reject("TXT를 열 앱이 없습니다");}});
+    }catch(Exception e){call.reject(e.getMessage());}},"Open-Log").start();}
     @PluginMethod public void prepareDaily(PluginCall call) {
         new Thread(()->{try{
             String date=call.getString("date","");if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("날짜 형식 오류");

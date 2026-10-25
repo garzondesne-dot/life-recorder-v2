@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Small, atomic metadata index. Audio bytes remain in MediaStore. */
 final class RecordingStore {
+    static volatile long version=0;
     private static AtomicFile file(Context c){return new AtomicFile(new File(c.getFilesDir(),"recordings-v2.json"));}
     private static JSONArray raw(Context c)throws Exception{
         AtomicFile f=file(c);
@@ -41,7 +42,7 @@ final class RecordingStore {
         JSONArray a=raw(c);
         for(int i=0;i<a.length();i++)if(uri.equals(a.getJSONObject(i).optString("uri")))return;
         a.put(new JSONObject().put("name",n).put("uri",uri).put("size",size)
-            .put("durMs",ms).put("created",created).put("recovered",recovered));save(c,a);
+            .put("durMs",ms).put("created",created).put("recovered",recovered));save(c,a);version++;
     }
 }
 

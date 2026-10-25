@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -79,6 +79,9 @@ if (!m.includes('com.openai.chatgpt')) m=m.replace('</manifest>', '<queries><pac
 if (!m.includes('com.google.android.apps.bard')) m = m.replace('</manifest>', `
     <queries><package android:name="com.google.android.apps.bard" /></queries>
 </manifest>`);
+if(!m.includes('${applicationId}.exports'))m=m.replace('</application>', `<provider android:name=".ExportFileProvider" android:authorities="\${applicationId}.exports" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" /></provider></application>`);
+const xmlDir=path.join(resDst,'xml');fs.mkdirSync(xmlDir,{recursive:true});
+fs.writeFileSync(path.join(xmlDir,'export_paths.xml'), '<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="daily_exports" path="exports/" /></paths>');
 fs.writeFileSync(mf, m);
 console.log('[patch] AndroidManifest.xml updated');
 console.log('[patch] done ✔');
@@ -89,7 +92,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 4').replace(/versionName "[^"]*"/, 'versionName "2.2.0"');
+g = g.replace(/versionCode \d+/, 'versionCode 5').replace(/versionName "[^"]*"/, 'versionName "2.3.0"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
@@ -128,3 +131,12 @@ dependencies {
 `);
 }
 
+
+// Keep launch surfaces true black in both system light and dark modes.
+const stylesFile=path.join(resDst,'values/styles.xml');
+if(fs.existsSync(stylesFile)){
+  let styles=fs.readFileSync(stylesFile,'utf8');
+  styles=styles.replace(/(<item name="windowSplashScreenBackground">)[^<]*/g,'$1@android:color/black');
+  if(!styles.includes('name="windowSplashScreenBackground"')) styles=styles.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/,'$1<item name="windowSplashScreenBackground">@android:color/black</item>');
+  fs.writeFileSync(stylesFile,styles);
+}

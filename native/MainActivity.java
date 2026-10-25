@@ -40,7 +40,12 @@ public class MainActivity extends BridgeActivity {
         getSharedPreferences("drive",0).edit().clear().apply();
 
         // 안드로이드 15+ 강제 전체화면(edge-to-edge): 상태바·내비게이션바·폴드 힌지 영역만큼 화면을 안쪽으로 줄여 하단 잘림 방지
-        View content = findViewById(android.R.id.content);
+        getWindow().getDecorView().setBackgroundColor(android.graphics.Color.BLACK);
+        getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        getWindow().setNavigationBarColor(android.graphics.Color.BLACK);
+        androidx.core.view.WindowInsetsControllerCompat bars=androidx.core.view.WindowCompat.getInsetsController(getWindow(),getWindow().getDecorView());
+        bars.setAppearanceLightStatusBars(false);bars.setAppearanceLightNavigationBars(false);
+        View content = findViewById(android.R.id.content);content.setBackgroundColor(android.graphics.Color.BLACK);
         ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
             Insets i = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             v.setPadding(i.left, i.top, i.right, i.bottom);
@@ -59,11 +64,15 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void handleOnBackPressed() {
                 WebView w = getBridge().getWebView();
-                if (w != null && w.canGoBack()) w.goBack();
+                if (w != null) w.evaluateJavascript("window.appBack ? window.appBack() : false", value -> {if(!"true".equals(value))moveTaskToBack(true);});
                 else moveTaskToBack(true);
             }
         });
     }
+    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);
+        if(getBridge()!=null)getBridge().getWebView().evaluateJavascript("window.checkLaunchExport && window.checkLaunchExport()",null);
+    }
 
 }
+
 

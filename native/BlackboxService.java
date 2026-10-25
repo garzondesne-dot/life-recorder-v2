@@ -154,7 +154,7 @@ public class BlackboxService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Life Blackbox")
                 .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setSmallIcon(R.drawable.ic_stat_wave)
                 .setContentIntent(pi)
                 .addAction(0, "녹음 중지", stopIntent())
                 .setOngoing(true)

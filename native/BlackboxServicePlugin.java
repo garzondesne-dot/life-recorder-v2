@@ -92,6 +92,7 @@ public class BlackboxServicePlugin extends Plugin {
         try {
             Intent i = new Intent(getContext(), BlackboxService.class);
             i.putExtra(BlackboxService.EXTRA_TEXT, call.getString("text", BlackboxService.DEFAULT_TEXT));
+            persistSettings(call.getObject("config",new JSObject()));
             i.putExtra("config", call.getObject("config", new JSObject()).toString());
             ContextCompat.startForegroundService(getContext(), i);
             call.resolve();
@@ -281,7 +282,7 @@ public class BlackboxServicePlugin extends Plugin {
         } catch(Exception e){call.reject(e.getMessage());}
     }
     @PluginMethod public void configure(PluginCall call) {
-        NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(call.getObject("config",new JSObject()));call.resolve();
+        JSObject config=call.getObject("config",new JSObject());persistSettings(config);NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(config);call.resolve();
     }
     @PluginMethod public void listRecordings(PluginCall call) {
         new Thread(()->{
@@ -308,6 +309,17 @@ public class BlackboxServicePlugin extends Plugin {
             Intent i=new Intent(Intent.ACTION_SEND).setType("audio/mp4").putExtra(Intent.EXTRA_STREAM,Uri.parse(uri));
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);getActivity().startActivity(Intent.createChooser(i,"녹음 파일 내보내기"));call.resolve();
         }catch(Exception e){call.reject(e.getMessage());}
+    }
+
+    private void persistSettings(JSObject config){getContext().getSharedPreferences("recorder-settings",0).edit().putBoolean("reminderOn",config.optBoolean("reminderOn",false)).putBoolean("sleepOn",config.optBoolean("sleepOn",false)).apply();}
+    @PluginMethod public void notificationStatus(PluginCall call){JSObject o=new JSObject();o.put("allowed",androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());call.resolve(o);}
+    @PluginMethod public void allowNotifications(PluginCall call){
+        if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED)requestPermissionForAlias("notifications",call,"afterReminderPermission");
+        else {Intent i=new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());getActivity().startActivity(i);call.resolve();}
+    }
+    @PermissionCallback private void afterReminderPermission(PluginCall call){notificationStatus(call);}
+    @PluginMethod public void launchExport(PluginCall call){
+        String token=getActivity().getIntent().getStringExtra("exportToken");getActivity().getIntent().removeExtra("exportToken");JSObject o=new JSObject();o.put("token",token);call.resolve(o);
     }
 
 }
