@@ -1144,7 +1144,13 @@ function dateGroupTitle(ts) {
 async function refreshFiles() {
   if (!DB.db) return;
   if(BB){
-    try { const r=await BB.listRecordings(); for(const f of r.files || []) await idbPut('files',{...f,native:true}); }
+    try {
+      const r=await BB.listRecordings();
+      if(!Array.isArray(r.files))throw new Error('잘못된 녹음 목록 응답');
+      const live=new Set(r.files.map(f=>f.uri));
+      for(const old of await idbGetAll('files'))if(old.native&&!live.has(old.uri))await idbDel('files',old.name);
+      for(const f of r.files)await idbPut('files',{...f,native:true});
+    }
     catch(e){toast('파일 목록 확인 실패: '+e.message);}
   }
   const all = (await idbGetAll('files')).filter(f => !/\.(txt|json)$/i.test(f.name)).sort((a, b) => b.created - a.created);

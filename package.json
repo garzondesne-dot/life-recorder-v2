@@ -8,7 +8,7 @@
     "sync": "node scripts/patch-android.mjs && cap sync android",
     "apk": "cd android && gradlew assembleDebug",
     "check": "node scripts/check-source.mjs",
-    "test": "node tests/native-ui.mjs && node tests/patch-android.mjs"
+    "test": "node tests/native-ui.mjs && node tests/patch-android.mjs && node tests/recording-reliability.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
