@@ -41,7 +41,7 @@ Google 공식 안내 기준: 한 프롬프트 최대 10개(제공 상태에 따�
 ## 변경 경로
 
 www/index.html, native/MainActivity.java, native/BlackboxServicePlugin.java, native/NativeRecorder.java,
-native/RecordingStore.java, native/RecordingExportPlugin.java(신규), native/DriveSync.java(빈 폐기 파일),
+native/RecordingStore.java, native/RecordingExportPlugin.java(신규), native/DriveSync.java(삭제),
 scripts/patch-android.mjs, tests/native-ui.mjs, tests/patch-android.mjs, package.json, README.md, GOOGLE-DRIVE-SETUP.md.
 
 DriveSync.java의 빈 파일은 ZIP 덮어쓰기 시 옛 코드를 지우기 위한 대체 파일입니다. 저장소에서 삭제해도 됩니다.
@@ -51,7 +51,7 @@ Android 생성 폴더의 옛 DriveSync.java와 인증·WorkManager 의존성은 
 
 통과: JS node --check, 네이티브 시작/중복시작/정지 UI 회귀 테스트, 폴더 전체 27개→10/10/7 묶음·중복 제거·취소 시 보존·자동 완료 표시 금지,
 Android 패치 재실행·권한·고정 서명·버전 증가·공유 대상 조회 설정·드라이브 의존성 제거 테스트.
-미검증: Android Java 컴파일, APK 설치, 삼성 실기기 레이아웃, 시스템 폴더 선택 창, Gemini의 실제 파일 수신/전송.
+GitHub Actions에서 Android Java 컴파일·APK 빌드·lintDebug 통과 (빌드 40160195646, 코드 ee28a689).\n미검증: APK 설치, 삼성 실기기 레이아웃, 시스템 폴더 선택 창, Gemini의 실제 파일 수신/전송.
 
 ## 주의할 동작
 
