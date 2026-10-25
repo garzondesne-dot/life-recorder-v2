@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -110,4 +110,21 @@ android {
   fs.writeFileSync(gradleFile, g);
 }
 
+
+
+// Exercise the real metadata store against Android's ContentResolver in local unit tests.
+const testDir=path.join(android,'app/src/test/java/com/lifeblackbox/recorder');
+fs.mkdirSync(testDir,{recursive:true});
+const tests=path.join(root,'tests/android');
+if(fs.existsSync(tests))fs.cpSync(tests,testDir,{recursive:true});
+if(!g.includes('LIFE_RELIABILITY_TESTS')){
+  fs.appendFileSync(gradleFile, `
+// LIFE_RELIABILITY_TESTS
+android { testOptions { unitTests.includeAndroidResources = true } }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
+`);
+}
 

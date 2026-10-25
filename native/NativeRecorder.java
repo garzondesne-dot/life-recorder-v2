@@ -41,7 +41,7 @@ public final class NativeRecorder implements Runnable {
     private static JSONObject validated(JSONObject source) {
         try {
             JSONObject c=new JSONObject(source.toString());
-            int split=c.optInt("splitMin",30);if(split!=1&&split!=15&&split!=30&&split!=60)split=30;
+            int split=c.optInt("splitMin",30);if(split!=1&&split!=15&&split!=30&&split!=60&&split!=90&&split!=120)split=30;
             c.put("splitMin",split);int rate=c.optInt("bitrate",24000);
             if(rate!=16000&&rate!=24000&&rate!=32000&&rate!=48000)rate=24000;c.put("bitrate",rate);
             c.put("threshold",Math.max(-80,Math.min(-10,c.optDouble("threshold",-50))));
@@ -112,8 +112,8 @@ public final class NativeRecorder implements Runnable {
         codec=MediaCodec.createEncoderByType("audio/mp4a-latm");codec.configure(f,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);codec.start();
     }
     private void encode(short[] pcm,long wall) throws Exception {
-        int i;
-        while((i=codec.dequeueInputBuffer(10000))<0){drain(false);if(stop&&Thread.currentThread().isInterrupted())Thread.interrupted();}
+        int i;long inputDeadline=SystemClock.elapsedRealtime()+5000;
+        while((i=codec.dequeueInputBuffer(10000))<0){if(SystemClock.elapsedRealtime()>inputDeadline)throw new IOException("AAC 입력 버퍼 시간 초과");drain(false);if(stop&&Thread.currentThread().isInterrupted())Thread.interrupted();}
         ByteBuffer b=codec.getInputBuffer(i);b.clear(); b.order(ByteOrder.LITTLE_ENDIAN);
         for(short s:pcm)b.putShort(s);
         codec.queueInputBuffer(i,0,pcm.length*2,samples*1000000/RATE,0);timeline.write(spans.accept(samples*1000/RATE,pcm.length*1000/RATE,wall).getBytes(java.nio.charset.StandardCharsets.UTF_8));samples+=pcm.length;drain(false);
@@ -185,8 +185,21 @@ public final class NativeRecorder implements Runnable {
         File[] files=new File(c.getFilesDir(),"pending").listFiles((d,n)->n.endsWith(".aac"));
         if(files!=null)for(File f:files){if(f.length()==0)f.delete();else publish(c,f,true);}
     }
-    static void publish(Context c,File journal,boolean recovered)throws Exception{
-        String base=journal.getName().replace(".aac",recovered?"_복구.m4a":".m4a");
+    static synchronized void publish(Context c,File journal,boolean recovered)throws Exception{
+        final android.util.AtomicFile receipt=new android.util.AtomicFile(new File(journal.getPath()+".publish.json"));
+        JSONObject loaded;
+        try{loaded=new JSONObject(new String(receipt.readFully(),java.nio.charset.StandardCharsets.UTF_8));}
+        catch(FileNotFoundException e){
+            if(receipt.getBaseFile().exists()||new File(receipt.getBaseFile().getPath()+".bak").exists())throw e;
+            loaded=new JSONObject();
+        }
+        final JSONObject state=loaded;
+        if(state.optBoolean("done")){
+            if(journal.delete()||!journal.exists()){new File(journal.getPath()+".timeline").delete();receipt.delete();}
+            return;
+        }
+        // Recovery uses the same identity as normal publication, including older recovery names.
+        String base=state.optString("name",journal.getName().replace(".aac",".m4a"));
         File tmp=new File(c.getCacheDir(),base);
         MediaExtractor ex=new MediaExtractor();MediaMuxer mux=null;boolean started=false;long last=0;
         try{
@@ -199,21 +212,87 @@ public final class NativeRecorder implements Runnable {
             mux.stop();started=false;
         }finally{ex.release();if(mux!=null){if(started)try{mux.stop();}catch(Exception ignored){}mux.release();}}
         if(last==0 && tmp.length()<100)throw new IOException("빈 녹음 파일");
-        ContentResolver cr=c.getContentResolver();long created=journal.lastModified();
+        final ContentResolver cr=c.getContentResolver();long created=journal.lastModified();
         try { created=new SimpleDateFormat("yyyyMMdd_HHmmss_SSS",Locale.US).parse(journal.getName().substring(4,23)).getTime(); } catch(Exception ignored) { }
-        String date=new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date(created));
-        ContentValues v=new ContentValues();v.put(MediaStore.MediaColumns.DISPLAY_NAME,base);v.put(MediaStore.MediaColumns.MIME_TYPE,"audio/mp4");
-        v.put(MediaStore.MediaColumns.RELATIVE_PATH,"Documents/LifeRecorder/"+date);v.put(MediaStore.MediaColumns.IS_PENDING,1);
-        Uri uri=cr.insert(MediaStore.Files.getContentUri("external"),v);if(uri==null)throw new IOException("저장 위치 생성 실패");
-        try(InputStream in=new FileInputStream(tmp);OutputStream out=cr.openOutputStream(uri,"w")){
-            if(out==null)throw new IOException("저장 스트림 없음");byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b,0,n);
-        }catch(Exception e){cr.delete(uri,null,null);throw e;}
-        v.clear();v.put(MediaStore.MediaColumns.IS_PENDING,0);cr.update(uri,v,null,null);
-        RecordingStore.add(c,base,uri.toString(),tmp.length(),last/1000+64,recovered,created);
-        try { DailyLog.record(c,journal,base,created,last/1000+64);new File(journal.getAbsolutePath()+".timeline").delete(); }
-        catch(Exception logError){android.util.Log.e("LifeRecorder","Daily log pending",logError);}
-        journal.delete();tmp.delete();
+        final long timestamp=created, duration=last/1000+64;
+        final String relative="Documents/LifeRecorder/"+new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date(created))+"/";
+        final Uri collection=MediaStore.setIncludePending(MediaStore.Files.getContentUri("external"));
+        RecordingPublication.publish(new RecordingPublication.Backend(){
+            void saveState()throws Exception{
+                FileOutputStream stream=null;
+                try{stream=receipt.startWrite();stream.write(state.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));receipt.finishWrite(stream);}
+                catch(Exception e){if(stream!=null)receipt.failWrite(stream);throw e;}
+            }
+            public boolean done(){return state.optBoolean("done");}
+            public String destination(){return state.has("uri")?state.optString("uri"):null;}
+            public void prepare()throws Exception{
+                state.put("name",base);saveState();
+            }
+            RecordingPublication.Target readTarget(android.database.Cursor cursor)throws Exception{
+                String owner=cursor.getString(2);
+                if(!c.getPackageName().equals(owner))throw new IOException("다른 앱의 파일은 변경하지 않습니다");
+                return new RecordingPublication.Target(android.content.ContentUris.withAppendedId(
+                    MediaStore.Files.getContentUri("external"),cursor.getLong(0)).toString(),cursor.getInt(1)!=0);
+            }
+            final String[] columns={MediaStore.MediaColumns._ID,MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.OWNER_PACKAGE_NAME};
+            public RecordingPublication.Target find()throws Exception{
+                // Covers process death between insert() and persisting its returned URI.
+                String oldName=journal.getName().replace(".aac","_복구.m4a");
+                String where=MediaStore.MediaColumns.RELATIVE_PATH+"=? AND ("+MediaStore.MediaColumns.DISPLAY_NAME+"=? OR "+MediaStore.MediaColumns.DISPLAY_NAME+"=?)";
+                try(android.database.Cursor cursor=cr.query(collection,columns,where,new String[]{relative,base,oldName},null)){
+                    if(cursor==null)throw new IOException("저장 대상 조회 실패");
+                    if(!cursor.moveToFirst())return null;
+                    RecordingPublication.Target result=readTarget(cursor);
+                    if(cursor.moveToNext())throw new IOException("동일 녹음 후보가 여러 개여서 복구를 보류합니다");
+                    return result;
+                }
+            }
+            public RecordingPublication.Target inspect(String uri)throws Exception{
+                try(android.database.Cursor cursor=cr.query(MediaStore.setIncludePending(Uri.parse(uri)),columns,null,null,null)){
+                    if(cursor==null)throw new IOException("저장 대상 조회 실패");
+                    return cursor.moveToFirst()?readTarget(cursor):null;
+                }
+            }
+            public RecordingPublication.Target create()throws Exception{
+                ContentValues v=new ContentValues();v.put(MediaStore.MediaColumns.DISPLAY_NAME,base);
+                v.put(MediaStore.MediaColumns.MIME_TYPE,"audio/mp4");v.put(MediaStore.MediaColumns.RELATIVE_PATH,relative);
+                v.put(MediaStore.MediaColumns.IS_PENDING,1);
+                Uri uri=cr.insert(MediaStore.Files.getContentUri("external"),v);
+                if(uri==null)throw new IOException("저장 위치 생성 실패");
+                return new RecordingPublication.Target(uri.toString(),true);
+            }
+            public void remember(String uri)throws Exception{state.put("uri",uri);saveState();}
+            public void writePending(RecordingPublication.Target target)throws Exception{
+                // Only this recording's unfinished row is retried. Published audio is never overwritten.
+                try(InputStream in=new FileInputStream(tmp);android.os.ParcelFileDescriptor fd=cr.openFileDescriptor(Uri.parse(target.uri),"rwt")){
+                    if(fd==null)throw new IOException("저장 스트림 없음");
+                    try(FileOutputStream output=new android.os.ParcelFileDescriptor.AutoCloseOutputStream(fd)){
+                        byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)output.write(b,0,n);
+                        output.flush();output.getFD().sync();
+                    }
+                }
+            }
+            public void finish(RecordingPublication.Target target)throws Exception{
+                ContentValues v=new ContentValues();v.put(MediaStore.MediaColumns.IS_PENDING,0);
+                if(cr.update(Uri.parse(target.uri),v,null,null)!=1)throw new IOException("저장 완료 처리 실패");
+            }
+            public void index(RecordingPublication.Target target)throws Exception{
+                String name=base;
+                try(android.database.Cursor cursor=cr.query(Uri.parse(target.uri),new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){
+                    if(cursor==null||!cursor.moveToFirst())throw new IOException("저장 파일 확인 실패");
+                    name=cursor.getString(0);
+                }
+                RecordingStore.add(c,name,target.uri,tmp.length(),duration,recovered,timestamp);
+                // Daily log must be durable before receipt completion and journal cleanup.
+                DailyLog.record(c,journal,name,timestamp,duration);
+            }
+            public void complete()throws Exception{state.put("done",true);saveState();}
+            public void cleanup(){
+                // Never delete MediaStore audio; only discard the successfully published private journal.
+                if(journal.delete()||!journal.exists()){new File(journal.getPath()+".timeline").delete();receipt.delete();}
+                tmp.delete();
+            }
+        });
     }
 }
-
 
