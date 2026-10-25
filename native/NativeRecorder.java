@@ -83,7 +83,7 @@ public final class NativeRecorder implements Runnable {
             return c;
         }catch(Exception e){return new JSONObject();}
     }
-    void stop() { service.wakeNative(); stop=true; Thread t=thread; if(t!=null)t.interrupt(); }
+    synchronized void stop() { if(stop)return;service.wakeNative(); stop=true; Thread t=thread; if(t!=null)t.interrupt(); }
     JSONObject status() {
         JSONObject o=new JSONObject(); try {
             o.put("sessionStarted",sessionStarted).put("filesVersion",RecordingStore.version).put("running", true).put("stopping",stop).put("sleeping",sleeping).put("voice",voice)

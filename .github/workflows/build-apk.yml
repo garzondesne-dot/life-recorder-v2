@@ -52,6 +52,10 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest assembleDebug lintDebug signingReport --no-daemon --stacktrace
 
+      - name: Render UI previews
+        run: |
+          if command -v google-chrome >/dev/null; then node tests/render-preview.mjs; else echo "Chrome unavailable; UI preview skipped"; fi
+
       - name: Package APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.3.apk
 
