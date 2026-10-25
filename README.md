@@ -1,52 +1,62 @@
-# Life Recorder v2.0 — 테스트 빌드 소스
+# Life Recorder v2.1
 
-이 ZIP은 APK가 아닌 전체 프로젝트 소스입니다. Android 컴파일·린트·실기기 검증은 아직 실행하지 못했습니다.
+구글 계정 로그인·드라이브 동기화·자동 업로드를 제거하고, 녹음 폴더 전체 불러오기와 Gemini 공유를 추가했습니다.
+녹음 엔진은 기존 네이티브 엔진을 유지합니다. 설정 화면에서 카드들이 눌려 잘리는 flex 레이아웃을 수정했습니다.
 
-## 적용 및 빌드
+## 설치 / 빌드
 
-1. 압축을 풉니다. `life-recorder-v2` 폴더 **안쪽 내용**을 기존 저장소 루트에 같은 경로로 덮어씁니다. 기존 앱 삭제는 하지 마세요.
-2. `www/`, `native/`, `scripts/`, `tests/`, `package.json`, `.github/workflows/build-apk.yml`을 모두 반영합니다. 고정 키 `keystore/debug.keystore`는 기존과 동일합니다.
-3. GitHub Actions → Build Life Recorder v2 APK → 실행합니다. main/master에 push하면 자동 실행됩니다.
-4. 성공한 실행의 Artifacts → `LifeRecorder-v2-APK` → 압축 해제 → `LifeRecorder-v2.apk`를 덮어쓰기 설치합니다.
-5. 실패했다면 Actions의 첫 오류와 앞뒤 로그를 확인합니다. `LifeRecorder-v2-build-reports`에 린트 보고서가 포함됩니다.
+1. ZIP의 폴더 안쪽 내용을 저장소 루트에 같은 경로로 덮어씁니다. www / native / scripts / tests / package.json을 모두 반영합니다.
+2. 기존 .github/workflows/build-apk.yml은 그대로 사용합니다. 추가 수정 없이 push하면 기존 Actions가 실행됩니다.
+3. Actions 성공 → Artifacts → LifeRecorder-v2-APK → LifeRecorder-v2.apk를 설치합니다. APK 이름은 기존 워크플로 때문에 v2이지만 앱 버전은 2.1.0 / versionCode 3입니다.
+4. 기존 고정 keystore를 그대로 사용하므로 기존 앱을 삭제하지 않고 업데이트합니다. 앱을 삭제하면 내부 목록·설정·미완성 저널이 사라질 수 있습니다.
 
-## 변경 파일과 위치
+## Gemini로 녹음 폴더 보내기
 
-| 경로 | 역할 |
-|---|---|
-| www/index.html | 기존 UI에 네이티브 상태·파일 목록·구글 계정 연결·업로드 상태 연결 |
-| native/NativeRecorder.java | AudioRecord → PCM VAD → AAC 저널 → 표준 m4a, 0.6초 프리롤 |
-| native/BlackboxService.java | WebView와 독립적인 녹음 수명, 알림 중지, 취침 알람·웨이크락 |
-| native/BlackboxServicePlugin.java | 마이크 권한, 서비스 제어, 파일 열기·공유, 드라이브 연결 |
-| native/RecordingStore.java | 녹음 파일과 계정별 업로드 결과를 원자적으로 저장 |
-| native/DriveSync.java | Google AuthorizationClient, WorkManager 네트워크 재시도·정기 동기화 |
-| native/MainActivity.java | 구글 계정 선택·동의 결과, 폴드 인셋 |
-| scripts/patch-android.mjs | 네이티브 코드 복사, 서비스 유지, 고정 서명, 버전2, Android10 이상 |
-| .github/workflows/build-apk.yml | JS 검사·회귀 테스트·APK 컴파일·린트·아티팩트 |
+1. 앱의 [저장 파일] 탭을 엽니다.
+2. [앱 녹음 전체]로 앱 인덱스의 저장 완료된 파일을 불러오거나, [녹음 폴더 선택]으로 Android 폴더 선택 창을 엽니다.
+3. 내장 저장공간/Documents/LifeRecorder 또는 날짜 폴더를 고르고 [이 폴더 사용]을 누릅니다. 하위 폴더의 오디오도 포함합니다.
+4. 모든 파일을 파일명 순서로 불러오고, 최대 10개씩 묶음으로 준비합니다. 5개 / 1개씩으로 바꿀 수도 있습니다.
+5. [Gemini로 보내기]를 누릅니다. Gemini가 해당 공유 형식을 받으면 앱을 직접 엽니다. 아니면 Android 공유 메뉴를 엽니다.
+6. Gemini에서 첨부된 파일을 확인하고 전송하세요. 완료 후 이 앱으로 돌아와 [다음 묶음]을 누릅니다. 앱은 공유 화면을 열었다는 이유로 업로드 성공이나 완료를 표시하지 않습니다.
 
-## 기능 및 제한
+Gemini가 공유 메뉴에 없거나 파일을 받지 않는 버전이면, [Gemini 열기] → Gemini의 + → 파일 → Documents/LifeRecorder에서 길게 눌러 여러 개를 선택하세요.
+일부 Gemini 버전은 외부 앱의 여러 오디오 공유를 받지 않을 수 있습니다. 이 앱은 Gemini의 업로드 화면·서버를 제어하지 않으며 자동 전송하지 않습니다.
+API 키, 서버, OAuth 연결이 필요하지 않습니다. 네트워크 업로드와 전송은 사용자가 선택한 Gemini 앱에서 처리합니다.
 
-- 내장 마이크를 요청하고 실제 경로를 확인합니다. SCO·통화 오디오 모드·스피커·오디오 포커스를 조작하지 않습니다. 경로가 외부 입력으로 바뀌면 오류를 표시하고 중지합니다. 차량 소리 문제 해결 여부는 실기기 검증이 필요합니다.
-- 실제 녹음은 서비스의 전용 스레드에서 진행합니다. `stopWithTask=false`로 최근 앱 제거 후 서비스 유지가 가능하도록 구성했습니다. 삼성의 절전·프로세스 강제 종료·설정의 강제 중지·재부팅까지 생존을 보장하지 않습니다.
-- 16kHz 모노 AAC, 16/24/32/48kbps, 50ms RMS, 2프레임 연속 감지, 0.6초 프리롤, 설정한 무음 유지 시간, 정각 분할을 지원합니다. 음질·분할 변경은 다음 파일부터 적용됩니다.
-- AAC 임시 파일은 앱 내부 `pending/`에 즉시 기록하고 10초마다 디스크 동기화합니다. 비정상 종료 후 **다음 녹음 시작 시** 남은 저널을 복구합니다. 전원 손실·저장장치 문제에서는 일부 오디오가 손실될 수 있습니다.
-- 완성 m4a는 `Documents/LifeRecorder/YYYY-MM-DD/`에 저장합니다. 파일 재포장은 별도 스레드로 처리합니다. 파일 목록에서 재생 앱 또는 공유 메뉴를 열 수 있습니다.
-- 구글 연동 설정은 `GOOGLE-DRIVE-SETUP.md`를 따릅니다. Google Cloud 콘솔 설정 없이는 연결할 수 없습니다. 녹음 기능에는 영향이 없습니다.
-- 이 버전의 파일만 자동 업로드합니다. 이전 IndexedDB 녹음은 기존 목록에서 유지되며 자동 이관하지 않습니다. 앱 삭제 시 내부 설정·인덱스·저널은 삭제됩니다.
-- 취침 시 마이크와 녹음 웨이크락을 해제합니다. 파일 저장·업로드 중에는 일시적으로 CPU를 사용합니다. 정확 알람 권한이 없으면 기상이 늦어질 수 있습니다.
-- 마이크 FGS는 앱 화면에서 녹음을 시작해야 합니다. 재부팅 자동 녹음은 추가하지 않았습니다.
+## Gemini 제한
 
-## 검증 상태
+Google 공식 안내 기준: 한 프롬프트 최대 10개(제공 상태에 따라 변경 가능), 오디오 등 일반 파일당 최대 100MB.
+오디오 합계는 기본 계정 10분, Google AI Pro·Ultra 3시간입니다. 파일 개수와 길이 한도는 별개입니다.
+100MB 초과 파일이 포함된 묶음은 전송을 막습니다. 폴더 선택으로 읽은 파일은 오디오 길이를 모를 수 있어 Gemini에서 길이 한도를 확인해야 합니다.
+오디오 ZIP은 지원되지 않으므로 ZIP으로 압축해서 보내지 않습니다. 큰 파일의 재분할·병합은 이번 버전에서 하지 않습니다.
+공식 안내: https://support.google.com/gemini/answer/14903178?co=GENIE.Platform%3DAndroid&hl=ko
 
-실행 완료: `npm run check`, `npm test`. JS 문법, 네이티브 UI 시작/중복시작/상태/정지, Android 패치 재실행·권한·서비스·서명 설정 회귀 테스트 통과.
-미실행: Java/Gradle 컴파일, Android lint, APK 설치, 실제 오디오·블루투스·Google OAuth·Drive 업로드. 이 환경에는 Android SDK/JDK가 없고 저장소 접근이 거부됩니다.
+## 설정 화면
 
-## 설치 후 확인 (권장 순서)
+- 스크롤 컨테이너에 min-height:0, 항목에 flex-shrink:0을 적용해 카드 내용이 잘리지 않게 수정.
+- 작은 화면에서 설명·설정값·시간 입력이 줄바꿈되도록 수정.
+- 임시로 삽입했던 드라이브 박스를 제거하고 녹음 상태를 기존 카드 스타일에 통합.
+- 배터리 최적화 상태를 확인하지 않고 '허용됨'으로 표시하던 기본 문구 수정.
 
-1. 분할 1분, VAD OFF로 2분 녹음 → 파일 2개 재생·길이 확인.
-2. VAD ON → 10초 무음·10초 발화 반복 → 시작 음절과 무음 제거 확인.
-3. 차량 음악 재생 중 녹음 시작/정지 및 블루투스 연결/해제 → 소리와 내장 마이크 경로 확인.
-4. 녹음 시작 → 화면 끄기·최근 앱 모두 닫기 → 3분 후 재실행해 상태·파일 확인.
-5. 취침 시각을 가까이 설정 → 취침 중 마이크 해제와 예약 기상 확인.
-6. Google Cloud 설정 후 계정 연결 → 파일 업로드 → 비행기 모드 해제 후 재시도·중복 여부 확인.
-7. 강제 중지 후 재실행·녹음 시작 → 복구 파일 확인. 마지막 30분 화면 꺼짐 배터리 테스트.
+## 변경 경로
+
+www/index.html, native/MainActivity.java, native/BlackboxServicePlugin.java, native/NativeRecorder.java,
+native/RecordingStore.java, native/RecordingExportPlugin.java(신규), native/DriveSync.java(빈 폐기 파일),
+scripts/patch-android.mjs, tests/native-ui.mjs, tests/patch-android.mjs, package.json, README.md, GOOGLE-DRIVE-SETUP.md.
+
+DriveSync.java의 빈 파일은 ZIP 덮어쓰기 시 옛 코드를 지우기 위한 대체 파일입니다. 저장소에서 삭제해도 됩니다.
+Android 생성 폴더의 옛 DriveSync.java와 인증·WorkManager 의존성은 패치 스크립트가 제거합니다.
+
+## 검증
+
+통과: JS node --check, 네이티브 시작/중복시작/정지 UI 회귀 테스트, 폴더 전체 27개→10/10/7 묶음·중복 제거·취소 시 보존·자동 완료 표시 금지,
+Android 패치 재실행·권한·고정 서명·버전 증가·공유 대상 조회 설정·드라이브 의존성 제거 테스트.
+미검증: Android Java 컴파일, APK 설치, 삼성 실기기 레이아웃, 시스템 폴더 선택 창, Gemini의 실제 파일 수신/전송.
+
+## 주의할 동작
+
+- 녹음 중인 파일은 분할 또는 중지 후 저장이 끝나야 목록에 포함됩니다. 폴더를 불러온 뒤 새 파일이 생기면 다시 불러오세요.
+- 외부 파일 앱에서 지운 녹음은 [앱 녹음 전체]에서 제외됩니다.
+- 폴더 선택은 해당 폴더 읽기 권한만 사용합니다. 전체 저장소 권한이나 구글 계정 권한을 요청하지 않습니다.
+- 폴더 내부 파일 수 10,000개 또는 하위 폴더 10,000개를 넘으면 날짜별 작은 폴더를 고르도록 안내합니다. 일부 파일을 조용히 누락시키지 않습니다.
+- 화면 꺼짐·최근 앱 제거·강제 종료·취침 예약 등 녹음 엔진의 한계는 기존 v2와 같습니다. 강제 중지/재부팅 후 자동 녹음하지 않습니다.
