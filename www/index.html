@@ -1347,7 +1347,7 @@ function selectedFiles(){
  });
 }
 function rebuildExport(){exportState.batches=makeExportBatches(selectedFiles(),Number($('exportSize').value)||9);exportState.index=0;drawExport();}
-function progressKey(){return 'lbb_v22_sent_'+$('analysisDate').value+'_'+exportState.target+'_'+JSON.stringify(exportState.batches.map(b=>b.map(f=>f.uri)))+'_'+$('analysisPurpose').value;}
+function progressKey(){return 'lbb_v22_sent_'+$('analysisDate').value+'_'+exportState.target+'_'+JSON.stringify(exportState.batches.map(b=>b.map(f=>f.uri)))+'_'+$('analysisPurpose').value+'_'+$('analysisStart').value+'_'+$('analysisEnd').value;}
 function completed(){try{return JSON.parse(localStorage.getItem(progressKey())||'[]');}catch{return [];}}
 function analysisPrompt(){
  const mode={brief:'하루 브리핑',todo:'업무와 할 일',coach:'대화 코칭'}[$('analysisPurpose').value]||'하루 브리핑';
@@ -1369,7 +1369,7 @@ function drawExport(){
   $('exportWarning').hidden=!batch.some(f=>f.size>100*1024*1024);
   $('exportPrev').disabled=s.busy||s.index===0;
   $('exportNext').disabled=s.busy||s.index>=s.batches.length-1;
-  for(const id of ['exportAll','exportFolder','exportSize'])$(id).disabled=s.busy;
+  for(const id of ['exportAll','exportFolder','exportSize','analysisDate','analysisStart','analysisEnd','analysisPurpose'])$(id).disabled=s.busy;
   $('exportSend').disabled=s.busy||!batch.length||batch.some(f=>f.size>100*1024*1024);
   $('exportGPT').disabled=$('exportSend').disabled;$('exportClaude').disabled=$('exportSend').disabled;
   $('batchProgress').textContent=`${exportState.target} · 사용자가 전송 확인한 묶음 ${completed().length}/${s.batches.length}`;

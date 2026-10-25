@@ -85,7 +85,7 @@ public class RecordingExportPlugin extends Plugin {
             Uri daily=DailyLog.publish(getContext(),date);
             if("claude".equals(call.getString("target","gemini")))streams.clear();
             streams.add(daily);
-            Intent send=new Intent(Intent.ACTION_SEND_MULTIPLE).setType("*/*");
+            Intent send=new Intent(streams.size()==1?Intent.ACTION_SEND:Intent.ACTION_SEND_MULTIPLE).setType(streams.size()==1?"text/plain":"*/*");
             String prompt=call.getString("prompt","");if(prompt.length()>30000)throw new Exception("분석 지침이 너무 깁니다");send.putExtra(Intent.EXTRA_TEXT,prompt);
             if(streams.size()==1)send.putExtra(Intent.EXTRA_STREAM,streams.get(0));else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM,streams);
             ClipData clip=ClipData.newUri(getContext().getContentResolver(),"녹음 파일",streams.get(0));
