@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#070a0d">
+<meta name="color-scheme" content="dark">
+<title>Life Blackbox Recorder</title>
+<style>
+:root {
+  --bg: #070a0d;
+  --panel: #10151b;
+  --panel-line: #1c242e;
+  --text: #eef3f7;
+  --dim: #7b8896;
+  --mint: #3ddc97;
+  --mint-bg: rgba(61, 220, 151, 0.14);
+  --amber: #ffb020;
+  --red: #ff545e;
+  --red-bg: rgba(255, 84, 94, 0.14);
+  --mono: "JetBrains Mono", "D2Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+html, body {
+  height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 15px;
+}
+[hidden] { display: none !important; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+#app {
+  max-width: 480px; margin: 0 auto; height: 100dvh;
+  display: flex; flex-direction: column; position: relative;
+}
+
+/* ===== 각 탭 페이지 레이아웃 ===== */
+.tab-page {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 16px 20px calc(92px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column;
+}
+#page-rec { justify-content: space-between; overflow: hidden; }
+
+/* ===== 상단 상태 표시줄 ===== */
+.top-status {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 28px; font-size: 14.5px; font-weight: 500;
+}
+.status-left { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.status-sub { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--mint); margin-top: 6px; margin-bottom: 16px; }
+.s-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #4e5965; transition: .25s;
+}
+.s-dot.rec { background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+.s-dot.standby { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.s-dot.sleep { background: #8a96ff; }
+.batt-info { font-size: 13px; color: var(--dim); display: flex; align-items: center; gap: 4px; }
+
+/* ===== 1. 녹음 탭: 다이얼 게이지 ===== */
+.gauge-wrap {
+  position: relative; width: 100%; max-width: 340px; margin: 8px auto 0;
+  display: flex; flex-direction: column; align-items: center;
+}
+#gaugeSvg { width: 100%; height: auto; overflow: visible; touch-action: none; }
+.gauge-center {
+  margin-top: -82px; text-align: center; pointer-events: none;
+}
+.db-readout {
+  font-size: 54px; font-weight: 300; letter-spacing: -1.5px; line-height: 1;
+  color: var(--text);
+}
+.db-unit { font-size: 16px; color: var(--dim); font-weight: 400; margin-left: 4px; letter-spacing: 0; }
+.clock-line {
+  margin-top: 14px; font-size: 14.5px; color: #9aa6b2; letter-spacing: -0.2px;
+}
+.gauge-ends {
+  width: 100%; display: flex; justify-content: space-between;
+  padding: 0 18px; margin-top: -22px; font-size: 12px; color: #566370; pointer-events: none;
+}
+
+/* ===== 1. 녹음 탭: 중앙 정지/시작 버튼 & 하단 컨트롤 (엄지 영역 40%) ===== */
+.thumb-zone {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 22px; margin-top: auto; padding-bottom: 6px;
+}
+.rec-btn-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.rec-btn {
+  position: relative; width: 124px; height: 124px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,84,94,0.18) 0%, rgba(255,84,94,0.06) 70%, transparent 100%);
+  border: none; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation; outline: none;
+}
+.rec-btn:active { transform: scale(0.97); }
+.rec-ring-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: rotate(-90deg); pointer-events: none;
+}
+.ring-bg { fill: none; stroke: rgba(255, 84, 94, 0.22); stroke-width: 3.5; }
+.rec-btn.idle .ring-bg { stroke: rgba(61, 220, 151, 0.28); }
+.ring-fg {
+  fill: none; stroke: var(--red); stroke-width: 5;
+  stroke-linecap: round; stroke-dasharray: 351.86; stroke-dashoffset: 351.86;
+}
+.rec-core {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--red); box-shadow: 0 0 20px rgba(255, 84, 94, 0.55);
+  transition: all .25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rec-btn.idle {
+  background: radial-gradient(circle, rgba(61,220,151,0.18) 0%, rgba(61,220,151,0.05) 70%, transparent 100%);
+}
+.rec-btn.idle .rec-core {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: var(--mint); box-shadow: 0 0 22px rgba(61, 220, 151, 0.55);
+}
+.rec-hint { font-size: 13px; color: #b5858b; letter-spacing: -0.2px; }
+.rec-btn.idle + .rec-hint { color: var(--mint); }
+
+/* 하단 알약 2개 */
+.pill-row {
+  width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.pill-card {
+  height: 56px; border-radius: 28px;
+  background: var(--panel); border: 1px solid var(--panel-line);
+  padding: 0 18px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.pill-card:active { background: #161d26; }
+.pill-val { color: var(--mint); font-weight: 700; margin-left: 6px; }
+
+/* 스위치 토글 */
+.sw { position: relative; width: 46px; height: 26px; flex: none; display: inline-block; }
+.sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+.sw span {
+  position: absolute; inset: 0; background: #26303c; border-radius: 13px;
+  transition: .2s; cursor: pointer;
+}
+.sw span::after {
+  content: ""; position: absolute; left: 3px; top: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #0b1015; transition: .2s;
+}
+.sw input:checked + span { background: var(--mint); }
+.sw input:checked + span::after { transform: translateX(20px); background: #08130e; }
+
+/* ===== 2. 저장 파일 탭 & 3. 설정 탭 공통 ===== */
+.page-title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin-top: 4px; }
+.summary-banner {
+  background: var(--panel); border: 1px solid var(--panel-line);
+  border-radius: 18px; padding: 16px; display: flex; align-items: center; gap: 14px;
+  margin-bottom: 18px;
+}
+.folder-ico {
+  width: 46px; height: 46px; border-radius: 14px;
+  background: var(--mint-bg); color: var(--mint);
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.banner-mid { flex: 1; min-width: 0; }
+.banner-mid b { display: block; font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.banner-mid span { font-size: 12.5px; color: var(--dim); }
+.banner-right { text-align: right; flex: none; }
+.banner-right b { display: block; font-size: 19px; font-weight: 800; }
+.banner-right span { font-size: 12px; color: var(--dim); }
+
+.date-group-hdr {
+  font-size: 13px; color: var(--dim); font-weight: 600;
+  margin: 14px 4px 8px;
+}
+.file-card {
+  background: var(--panel); border: 1px solid var(--panel-line);
+  border-radius: 18px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 14px; margin-bottom: 10px;
+}
+.play-btn {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--mint-bg); border: 1px solid rgba(61, 220, 151, 0.3);
+  color: var(--mint); display: flex; align-items: center; justify-content: center;
+  font-size: 15px; cursor: pointer; flex: none;
+}
+.file-meta { flex: 1; min-width: 0; }
+.file-name {
+  font-size: 15.5px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+}
+.file-sub { font-size: 12.5px; color: var(--dim); }
+.more-btn {
+  width: 34px; height: 36px; border: none; background: transparent;
+  color: var(--dim); font-size: 20px; cursor: pointer; flex: none;
+}
+.empty-files {
+  text-align: center; color: var(--dim); padding: 48px 0; font-size: 14px;
+}
+
+/* ===== 3. 설정 탭 ===== */
+.sec-label { font-size: 12.5px; color: var(--dim); font-weight: 600; margin: 14px 4px 8px; }
+.set-group {
+  background: var(--panel); border: 1px solid var(--panel-line);
+  border-radius: 18px; overflow: hidden; margin-bottom: 6px;
+}
+.set-item {
+  padding: 16px 18px; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; border-bottom: 1px solid var(--panel-line); cursor: pointer;
+}
+.set-item:last-child { border-bottom: none; }
+.set-info b { display: block; font-size: 15.5px; font-weight: 700; margin-bottom: 4px; }
+.set-info small { display: block; font-size: 12.5px; color: var(--dim); }
+.set-val {
+  color: var(--mint); font-size: 14.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; flex: none;
+}
+.set-val i { color: var(--dim); font-style: normal; font-size: 16px; }
+.time-pills { display: flex; align-items: center; gap: 8px; }
+.time-chip {
+  background: #171f29; border: 1px solid var(--panel-line); color: var(--text);
+  border-radius: 10px; padding: 6px 10px; font-size: 14px; font-family: var(--mono);
+  color-scheme: dark;
+}
+.badge-ok {
+  background: var(--mint-bg); color: var(--mint); border: 1px solid rgba(61,220,151,0.3);
+  padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+}
+
+/* ===== 하단 탭바 (3탭: 녹음 / 저장 파일 / 설정) ===== */
+.bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  max-width: 480px; margin: 0 auto;
+  height: calc(74px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(11, 15, 20, 0.96); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--panel-line);
+  display: grid; grid-template-columns: repeat(3, 1fr);
+}
+.nav-item {
+  border: none; background: transparent; color: var(--dim);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.nav-pill {
+  width: 56px; height: 32px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center; transition: .2s;
+}
+.nav-item svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nav-item.active { color: var(--mint); }
+.nav-item.active .nav-pill { background: var(--mint-bg); }
+
+/* ===== 모달 / 액션시트 ===== */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.65); display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  width: 100%; max-width: 480px; background: #121820;
+  border-top: 1px solid var(--panel-line); border-radius: 22px 22px 0 0;
+  padding: 20px 20px calc(24px + env(safe-area-inset-bottom));
+}
+.sheet h4 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.sheet-opt {
+  width: 100%; text-align: left; background: transparent; border: none;
+  border-bottom: 1px solid var(--panel-line); color: var(--text);
+  padding: 14px 4px; font-size: 15px; display: flex; justify-content: space-between; cursor: pointer;
+}
+.sheet-opt:last-child { border-bottom: none; }
+.sheet-opt.sel { color: var(--mint); font-weight: 700; }
+
+#toast {
+  position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(16px);
+  background: #1b2430; border: 1px solid #2d3946; color: var(--text);
+  padding: 10px 18px; border-radius: 999px; font-size: 13.5px;
+  opacity: 0; pointer-events: none; transition: .22s; z-index: 200; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ==================== 1. 녹음 탭 ==================== -->
+  <section id="page-rec" class="tab-page">
+    <header class="top-status">
+      <div class="status-left">
+        <span class="s-dot" id="topDot"></span>
+        <span id="topStatusText">대기 중 · 버튼을 눌러 녹음 시작</span>
+      </div>
+      <div class="batt-info" id="battChip">🔋 --%</div>
+    </header>
+
+    <div class="gauge-wrap">
+      <svg id="gaugeSvg" viewBox="0 0 320 205">
+        <defs>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#19644b"/>
+            <stop offset="55%" stop-color="#3ddc97"/>
+            <stop offset="82%" stop-color="#ffb020"/>
+            <stop offset="100%" stop-color="#ff545e"/>
+          </linearGradient>
+        </defs>
+        <!-- 눈금선 -->
+        <g id="gaugeTicks" stroke="#2c3744" stroke-width="1.8" stroke-linecap="round"></g>
+        <!-- 배경 트랙 아크 -->
+        <path id="arcTrack" d="M 40 165 A 120 120 0 0 1 280 165" fill="none" stroke="#18202a" stroke-width="14" stroke-linecap="round"/>
+        <!-- 활성 레벨 아크 -->
+        <path id="arcFill" d="M 40 165 A 120 120 0 0 1 280 165" fill="none" stroke="url(#arcGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="377" stroke-dashoffset="377"/>
+        <!-- 노란 감도 조절 칩(노브) -->
+        <g id="thrKnob" style="cursor:pointer">
+          <text id="thrChipText" x="160" y="18" fill="#ffb020" font-size="12.5" font-weight="600" text-anchor="middle">감도 -50</text>
+          <line id="thrLine1" x1="160" y1="25" x2="160" y2="34" stroke="#ffb020" stroke-width="2.2" stroke-linecap="round"/>
+          <line id="thrLine2" x1="160" y1="56" x2="160" y2="64" stroke="#ffb020" stroke-width="2.2" stroke-linecap="round"/>
+          <circle id="thrCircle" cx="160" cy="45" r="9.5" fill="#ffb020" stroke="#070a0d" stroke-width="3"/>
+        </g>
+      </svg>
+
+      <div class="gauge-ends">
+        <span>조용</span>
+        <span>큰 소리</span>
+      </div>
+
+      <div class="gauge-center">
+        <div><span id="dbNum" class="db-readout mono">-∞</span><span class="db-unit">dBFS</span></div>
+        <div class="clock-line mono"><span id="clockText">--:--:--</span> · 오늘 <span id="todayRecText">00:00</span> 녹음</div>
+      </div>
+    </div>
+
+    <div class="thumb-zone">
+      <div class="rec-btn-wrap">
+        <button id="btnRec" class="rec-btn idle" aria-label="녹음 제어">
+          <svg class="rec-ring-svg" viewBox="0 0 124 124">
+            <circle class="ring-bg" cx="62" cy="62" r="56"/>
+            <circle id="holdRing" class="ring-fg" cx="62" cy="62" r="56"/>
+          </svg>
+          <div class="rec-core"></div>
+        </button>
+        <div class="rec-hint" id="recHint">터치하여 녹음 시작</div>
+      </div>
+
+      <div class="pill-row">
+        <label class="pill-card">
+          <span>무음 건너뛰기</span>
+          <div class="sw"><input type="checkbox" id="vadOn"><span></span></div>
+        </label>
+        <button type="button" class="pill-card" id="btnHangover">
+          <span>무음 유지</span>
+          <span class="pill-val" id="hangoverText">3초</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 2. 저장 파일 탭 ==================== -->
+  <section id="page-files" class="tab-page" hidden>
+    <h1 class="page-title">저장 파일</h1>
+    <div class="status-sub"><span class="s-dot" id="filesDot"></span><span id="filesStatusText">대기 중</span></div>
+
+    <div class="summary-banner">
+      <div class="folder-ico">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <div class="banner-mid">
+        <b>삼성 녹음앱에서 바로 재생</b>
+        <span>Documents / LifeRecorder / 날짜별 폴더</span>
+      </div>
+      <div class="banner-right">
+        <b class="mono" id="totalMbText">0.0MB</b>
+        <span id="todayCountText">오늘 0개</span>
+      </div>
+    </div>
+
+    <audio id="player" controls style="width:100%;margin-bottom:12px" hidden></audio>
+    <div id="fileListContainer"></div>
+  </section>
+
+  <!-- ==================== 3. 설정 탭 ==================== -->
+  <section id="page-settings" class="tab-page" hidden>
+    <h1 class="page-title">설정</h1>
+    <div class="status-sub"><span class="s-dot" id="setDot"></span><span id="setStatusText">대기 중</span></div>
+
+    <div class="sec-label">녹음 파일</div>
+    <div class="set-group">
+      <div class="set-item" id="rowSplit">
+        <div class="set-info">
+          <b>자동 분할</b>
+          <small>정해진 간격으로 파일을 나눔</small>
+        </div>
+        <div class="set-val"><span id="valSplit">30분</span><i>›</i></div>
+      </div>
+      <div class="set-item" id="rowBitrate">
+        <div class="set-info">
+          <b>음질</b>
+          <small>1시간 ≈ 11MB · 텍스트 변환은 24k 이상</small>
+        </div>
+        <div class="set-val"><span id="valBitrate">24 kbps</span><i>›</i></div>
+      </div>
+    </div>
+
+    <div class="sec-label">취침</div>
+    <div class="set-group">
+      <label class="set-item">
+        <div class="set-info">
+          <b>취침 스케줄러</b>
+          <small>취침 시간에는 마이크와 CPU를 완전히 끔</small>
+        </div>
+        <div class="sw"><input type="checkbox" id="sleepOn"><span></span></div>
+      </label>
+      <div class="set-item" style="cursor:default">
+        <div class="set-info"><b>시간</b></div>
+        <div class="time-pills">
+          <input type="time" id="sleepStart" class="time-chip">
+          <span style="color:var(--dim)">→</span>
+          <input type="time" id="sleepEnd" class="time-chip">
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-label">전원 · 백그라운드</div>
+    <div class="set-group">
+      <div class="set-item" id="rowBattOpt">
+        <div class="set-info">
+          <b>배터리 최적화 제외</b>
+          <small>화면을 꺼도 녹음이 끊기지 않게 함</small>
+        </div>
+        <span class="badge-ok" id="battBadge">✓ 허용됨</span>
+      </div>
+      <div class="set-item" id="rowKeepOpenGuide">
+        <div class="set-info">
+          <b>백그라운드 녹음 안내</b>
+          <small>최근 앱에서 모두 닫기 방지</small>
+        </div>
+        <div class="set-val"><i>›</i></div>
+      </div>
+    </div>
+
+    <div class="sec-label">앱 정보</div>
+    <div class="set-group">
+      <div class="set-item" style="cursor:default">
+        <div class="set-info"><b>녹음 형식</b></div>
+        <div class="set-val" id="infoCodec">m4a · AAC</div>
+      </div>
+      <div class="set-item" style="cursor:default">
+        <div class="set-info"><b>저장 위치</b></div>
+        <div class="set-val">Recordings</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 하단 내비게이션 (3탭) ==================== -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="rec">
+      <div class="nav-pill">
+        <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </div>
+      <span>녹음</span>
+    </button>
+    <button class="nav-item" data-tab="files">
+      <div class="nav-pill">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <span>저장 파일</span>
+    </button>
+    <button class="nav-item" data-tab="settings">
+      <div class="nav-pill">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+      <span>설정</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- 팝업 시트 -->
+<div id="modalBackdrop" class="modal-backdrop" hidden>
+  <div class="sheet" id="sheetContent"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* =========================================================================
+   0. 유틸리티
+   ========================================================================= */
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const hms = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const hm  = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const ymd = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const mmss = ms => {
+  const s = Math.floor(Math.max(0, ms) / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`;
+};
+const fsizeMB = b => (b / 1048576).toFixed(1) + 'MB';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let toastT = null;
+function toast(msg, ms = 2200) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+/* =========================================================================
+   1. 설정 및 오늘 누적 녹음 시간 (localStorage)
+   ========================================================================= */
+const isNative = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const BB = isNative && Capacitor.Plugins ? Capacitor.Plugins.BlackboxService : null;
+const FS = isNative && Capacitor.Plugins && Capacitor.Plugins.Filesystem ? Capacitor.Plugins.Filesystem : null;
+const PREROLL = 0.6;
+const HANG_STEPS = [1, 2, 3, 5, 7, 10];
+
+const DEF = {
+  vadOn: true, threshold: -50, hangover: 3,
+  splitMin: 30, bitrate: 24000,
+  sleepOn: false, sleepStart: '23:00', sleepEnd: '07:00'
+};
+let cfg = { ...DEF };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('lbb_cfg') || '{}')); } catch {}
+const saveCfg = () => { try { localStorage.setItem('lbb_cfg', JSON.stringify(cfg)); } catch {} if(BB) BB.configure({config:cfg}).catch(e=>toast(e.message)); };
+
+// 오늘 누적 녹음 ms 관리
+function getTodaySavedMs() {
+  try {
+    const o = JSON.parse(localStorage.getItem('lbb_today_rec') || '{}');
+    return o.date === ymd(Date.now()) ? (o.ms || 0) : 0;
+  } catch { return 0; }
+}
+function addTodaySavedMs(addMs) {
+  const cur = getTodaySavedMs() + Math.max(0, addMs);
+  try { localStorage.setItem('lbb_today_rec', JSON.stringify({ date: ymd(Date.now()), ms: cur })); } catch {}
+}
+
+/* =========================================================================
+   2. IndexedDB (크래시 복구용 pending + 파일 목록 files)
+   ========================================================================= */
+const DB = { db: null };
+function dbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('lbb', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'name' });
+      if (!d.objectStoreNames.contains('pending')) d.createObjectStore('pending', { keyPath: 'id', autoIncrement: true }).createIndex('session', 'session');
+    };
+    r.onsuccess = () => { DB.db = r.result; res(); };
+    r.onerror = () => rej(r.error);
+  });
+}
+function idb(store, mode, op) {
+  return new Promise((res, rej) => {
+    const tx = DB.db.transaction(store, mode), st = tx.objectStore(store);
+    let r; try { r = op(st); } catch (e) { rej(e); return; }
+    tx.oncomplete = () => res(r && 'result' in r ? r.result : undefined);
+    tx.onerror = tx.onabort = () => rej(tx.error);
+  });
+}
+const idbPut    = (s, v) => idb(s, 'readwrite', st => st.put(v));
+const idbGet    = (s, k) => idb(s, 'readonly',  st => st.get(k));
+const idbGetAll = s      => idb(s, 'readonly',  st => st.getAll());
+const idbDel    = (s, k) => idb(s, 'readwrite', st => st.delete(k));
+const idbSession = sess  => idb('pending', 'readonly', st => st.index('session').getAll(sess));
+function idbDelSession(sess) {
+  return idb('pending', 'readwrite', st => {
+    const c = st.index('session').openCursor(IDBKeyRange.only(sess));
+    c.onsuccess = () => { const cur = c.result; if (cur) { cur.delete(); cur.continue(); } };
+    return null;
+  });
+}
+
+/* =========================================================================
+   3. 파일 저장 (MediaStore Recordings/Voice Recorder 우선)
+   ========================================================================= */
+const MIME_LIST = [
+  ['audio/mp4;codecs=mp4a.40.2', 'm4a'],
+  ['audio/mp4', 'm4a'],
+  ['audio/webm;codecs=opus', 'webm'],
+  ['audio/webm', 'webm']
+];
+
+function blobToB64(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(',')[1]);
+    fr.onerror = rej;
+    fr.readAsDataURL(blob);
+  });
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 15000);
+}
+
+async function saveOutput(name, blob, durMs = 0, recovered = false) {
+  await idbPut('files', {
+    name, blob, size: blob.size, created: Date.now(),
+    type: blob.type, durMs, recovered
+  });
+  if (BB && /\.m4a$/i.test(name) && BB.saveAudio) {
+    try {
+      await BB.saveAudio({ name, mime: 'audio/mp4', data: await blobToB64(blob) });
+    } catch (e) {
+      if (FS) {
+        try { await FS.writeFile({ path: 'LifeBlackbox/' + name, data: await blobToB64(blob), directory: 'DOCUMENTS', recursive: true }); } catch {}
+      }
+    }
+  }
+  refreshFiles();
+}
+
+/* =========================================================================
+   4. 오디오 그래프 & VAD 엔진
+   ========================================================================= */
+const A = { ctx: null, stream: null, src: null, meter: null, sink: null, delay: null, dest: null, rec: null, meta: null };
+const R = { running: false, sleeping: false, recActive: false, recAccum: 0, recSince: 0, nextSplit: 0 };
+const V = { db: -100, above: 0, voice: false, lastVoice: 0 };
+
+const WORKLET_SRC = `
+class LevelProc extends AudioWorkletProcessor {
+  constructor(){ super(); this.sum=0; this.n=0; this.target=Math.round(sampleRate*0.05); }
+  process(inputs){
+    const ch = inputs[0] && inputs[0][0];
+    if (ch){
+      for (let i=0;i<ch.length;i++){ const v=ch[i]; this.sum+=v*v; }
+      this.n += ch.length;
+      if (this.n >= this.target){ this.port.postMessage(Math.sqrt(this.sum/this.n)); this.sum=0; this.n=0; }
+    }
+    return true;
+  }
+}
+registerProcessor('level-proc', LevelProc);`;
+
+const MIC = { audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 } };
+
+function watchTrack() {
+  const tr = A.stream && A.stream.getAudioTracks()[0];
+  if (tr) tr.onended = () => {
+    if (!R.running || R.sleeping) return;
+    stopAll(); setTimeout(() => startAll(), 1500);
+  };
+}
+
+async function initAudio() {
+  A.stream = await navigator.mediaDevices.getUserMedia(MIC);
+  const AC = window.AudioContext || window.webkitAudioContext;
+  try { A.ctx = new AC({ latencyHint: 'playback', sampleRate: 16000 }); }
+  catch { A.ctx = new AC({ latencyHint: 'playback' }); }
+  A.src = A.ctx.createMediaStreamSource(A.stream);
+  A.sink = A.ctx.createGain(); A.sink.gain.value = 0; A.sink.connect(A.ctx.destination);
+
+  try {
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+    await A.ctx.audioWorklet.addModule(url);
+    A.meter = new AudioWorkletNode(A.ctx, 'level-proc');
+    A.meter.port.onmessage = e => onLevel(e.data);
+  } catch {
+    const sp = A.ctx.createScriptProcessor(2048, 1, 1);
+    sp.onaudioprocess = e => {
+      const d = e.inputBuffer.getChannelData(0); let s = 0;
+      for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+      onLevel(Math.sqrt(s / d.length));
+    };
+    A.meter = sp;
+  }
+  A.src.connect(A.meter); A.meter.connect(A.sink);
+
+  A.delay = A.ctx.createDelay(2); A.delay.delayTime.value = PREROLL;
+  A.dest = A.ctx.createMediaStreamDestination();
+  try { A.dest.channelCount = 1; } catch {}
+  A.src.connect(A.delay); A.delay.connect(A.dest);
+
+  watchTrack();
+}
+
+function teardownAudio(force = false) {
+  if (R.running && !force) return;
+  try { A.stream && A.stream.getTracks().forEach(t => t.stop()); } catch {}
+  try { A.ctx && A.ctx.close(); } catch {}
+  Object.assign(A, { ctx: null, stream: null, src: null, meter: null, sink: null, delay: null, dest: null, rec: null, meta: null });
+}
+
+function onLevel(rms) {
+  const db = rms > 1e-7 ? 20 * Math.log10(rms) : -100;
+  V.db = db;
+  if (!R.running || R.sleeping || !A.rec) return;
+  const now = Date.now();
+  if (db > cfg.threshold) {
+    V.above++;
+    if (V.above >= 2) {
+      V.lastVoice = now;
+      if (!V.voice) {
+        V.voice = true;
+        if (cfg.vadOn) resumeRec();
+        A.meta.segs++;
+      }
+    }
+  } else {
+    V.above = 0;
+    if (V.voice && now - V.lastVoice > cfg.hangover * 1000) {
+      V.voice = false;
+      if (cfg.vadOn) pauseRec();
+    }
+  }
+}
+
+function pauseRec() {
+  if (A.rec && A.rec.state === 'recording') {
+    A.rec.pause();
+    R.recAccum += performance.now() - R.recSince;
+    R.recActive = false;
+  }
+}
+function resumeRec() {
+  if (A.rec && A.rec.state === 'paused') {
+    A.rec.resume();
+    R.recSince = performance.now();
+    R.recActive = true;
+  }
+}
+function recOffset() {
+  return R.recAccum + (R.recActive ? performance.now() - R.recSince : 0);
+}
+
+function nextBoundary(t, min) {
+  const d = new Date(t), m = d.getHours() * 60 + d.getMinutes();
+  const n = new Date(d); n.setHours(0, 0, 0, 0); n.setMinutes((Math.floor(m / min) + 1) * min);
+  let b = n.getTime(); if (b - t < 30000) b += min * 60000;
+  return b;
+}
+
+function startRecorder() {
+  const now = Date.now();
+  let rec = null, ext = 'm4a';
+  for (const [m, e] of MIME_LIST) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) {
+      try { rec = new MediaRecorder(A.dest.stream, { mimeType: m, audioBitsPerSecond: cfg.bitrate }); ext = e; break; } catch {}
+    }
+  }
+  if (!rec) { rec = new MediaRecorder(A.dest.stream); ext = /mp4/.test(rec.mimeType) ? 'm4a' : 'webm'; }
+  const file = `LBB_${ymd(now).replace(/-/g,'')}_${hms(now).replace(/:/g,'')}.${ext}`;
+  const meta = {
+    file, session: file, start: now, end: null, segs: 0, recMs: 0,
+    vadOnly: cfg.vadOn, mime: rec.mimeType || 'audio/mp4', writes: Promise.resolve()
+  };
+  rec.ondataavailable = e => {
+    if (!e.data || !e.data.size) return;
+    const blob = e.data;
+    meta.writes = meta.writes.then(() => idbPut('pending', { session: file, blob, mime: meta.mime, t: Date.now() })).catch(() => {});
+  };
+  rec.onstop = () => finalizeSession(meta);
+  rec.start(10000);
+  A.rec = rec; A.meta = meta;
+  R.recAccum = 0; R.recActive = true; R.recSince = performance.now();
+  R.nextSplit = nextBoundary(now, cfg.splitMin);
+  if (cfg.vadOn && !V.voice) pauseRec();
+}
+
+function stopRecorder() {
+  if (!A.rec) return;
+  const rec = A.rec;
+  const curDur = recOffset();
+  A.meta.end = Date.now(); A.meta.recMs = curDur;
+  addTodaySavedMs(curDur);
+  A.rec = null; R.recActive = false;
+  if (rec.state !== 'inactive') rec.stop();
+}
+
+async function finalizeSession(meta) {
+  try {
+    await meta.writes;
+    const chunks = (await idbSession(meta.session)).sort((a, b) => a.id - b.id);
+    if (meta.vadOnly && meta.segs === 0) {
+      await idbDelSession(meta.session);
+      return;
+    }
+    if (!chunks.length) return;
+    const blob = new Blob(chunks.map(c => c.blob), { type: meta.mime });
+    await saveOutput(meta.file, blob, meta.recMs, false);
+    await idbDelSession(meta.session);
+  } catch (e) { toast('세션 저장 실패'); }
+}
+
+function rotateSession() {
+  const was = V.voice;
+  stopRecorder(); startRecorder();
+  if (was) { V.voice = true; if (cfg.vadOn) resumeRec(); A.meta.segs++; }
+}
+
+async function recoverOrphans() {
+  const all = await idbGetAll('pending');
+  if (!all.length) return;
+  const groups = {};
+  all.forEach(c => (groups[c.session] = groups[c.session] || []).push(c));
+  for (const [sess, arr] of Object.entries(groups)) {
+    arr.sort((a, b) => a.id - b.id);
+    const blob = new Blob(arr.map(c => c.blob), { type: arr[0].mime || 'audio/mp4' });
+    await saveOutput(sess, blob, arr.length * 10000, true);
+    await idbDelSession(sess);
+  }
+}
+
+/* =========================================================================
+   5. 취침 스케줄러
+   ========================================================================= */
+const toMin = s => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
+function inSleep(t) {
+  if (!cfg.sleepOn) return false;
+  const d = new Date(t), c = d.getHours() * 60 + d.getMinutes(), s = toMin(cfg.sleepStart), e = toMin(cfg.sleepEnd);
+  if (s === e) return false;
+  return s < e ? (c >= s && c < e) : (c >= s || c < e);
+}
+function nextWakeTime(t) {
+  const [h, m] = String(cfg.sleepEnd).split(':').map(Number);
+  const d = new Date(t); d.setHours(h, m || 0, 0, 0);
+  if (d.getTime() <= t) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+async function enterSleep() {
+  if (R.sleeping) return;
+  R.sleeping = true; V.voice = false;
+  stopRecorder();
+  try { A.src && A.src.disconnect(); } catch {}
+  try { A.stream && A.stream.getTracks().forEach(t => t.stop()); } catch {}
+  try { await A.ctx.suspend(); } catch {}
+  if (BB) BB.sleepUntil({ at: nextWakeTime(Date.now()), text: `취침 중 · ${cfg.sleepEnd}에 다시 듣습니다` }).catch(() => {});
+}
+async function exitSleep() {
+  if (!R.sleeping || R.waking) return;
+  R.waking = true;
+  try {
+    if (BB) await BB.wake({ text: '일상을 듣고 있습니다' }).catch(() => {});
+    await A.ctx.resume();
+    const s = await navigator.mediaDevices.getUserMedia(MIC);
+    try { A.src && A.src.disconnect(); } catch {}
+    A.stream = s; A.src = A.ctx.createMediaStreamSource(s);
+    A.src.connect(A.meter); A.src.connect(A.delay);
+    watchTrack();
+    R.sleeping = false; R.retryAt = 0;
+    startRecorder();
+  } catch {
+    R.retryAt = Date.now() + 60000;
+  } finally { R.waking = false; }
+}
+
+/* =========================================================================
+   6. 녹음 시작 / 정지 & 1초 롱프레스 버튼 제어
+   ========================================================================= */
+async function startAll() {
+  if (R.running || R.starting) return;
+  if (BB) {
+    R.starting=true;
+    try { await BB.start({config:cfg}); await pollNative(); toast('네이티브 녹음을 시작합니다'); }
+    catch(e){toast(e.message || '녹음을 시작하지 못했습니다');}
+    finally {R.starting=false;}
+    return;
+  }
+  try { if (!A.ctx) await initAudio(); await A.ctx.resume(); }
+  catch (e) { toast('마이크 권한을 허용해 주세요'); teardownAudio(true); return; }
+  if (BB) {
+    try { await BB.start({ text: '일상을 듣고 있습니다' }); } catch {}
+  }
+  R.running = true; R.sleeping = false;
+  Object.assign(V, { voice: false, above: 0 });
+  if (inSleep(Date.now())) await enterSleep(); else startRecorder();
+  updateStatusUI(); startMeterLoop();
+}
+
+function stopAll() {
+  if (BB) { BB.stop().then(()=>toast('마지막 파일 저장 후 정지합니다')).catch(e=>toast(e.message)); return; }
+  if (!R.running) return;
+  V.voice = false;
+  stopRecorder();
+  R.running = false; R.sleeping = false;
+  if (BB) setTimeout(() => BB.stop().catch(() => {}), 1200);
+  setTimeout(() => teardownAudio(), 1000);
+  updateStatusUI();
+  toast('녹음이 정지되었습니다');
+}
+
+if (BB && BB.addListener) {
+  BB.addListener('stopRequested', () => {
+    if (R.running) stopAll();
+    else BB.stop().catch(() => {});
+  });
+}
+
+// 중앙 정지 버튼 1초(1000ms) 홀드 로직
+const HOLD_MS = 1000;
+const RING_CIRC = 351.86;
+let holdStart = 0, holdRaf = null;
+
+function setRingProgress(p) {
+  $('holdRing').style.strokeDashoffset = String(RING_CIRC * (1 - Math.min(1, Math.max(0, p))));
+}
+function cancelHold() {
+  if (holdRaf) cancelAnimationFrame(holdRaf);
+  holdRaf = null; holdStart = 0;
+  setRingProgress(0);
+}
+function stepHold(ts) {
+  if (!holdStart) return;
+  const p = (ts - holdStart) / HOLD_MS;
+  setRingProgress(p);
+  if (p >= 1) {
+    cancelHold();
+    if (navigator.vibrate) navigator.vibrate(40);
+    stopAll();
+    return;
+  }
+  holdRaf = requestAnimationFrame(stepHold);
+}
+
+const btnRec = $('btnRec');
+btnRec.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (!R.running) {
+    startAll();
+    return;
+  }
+  holdStart = performance.now();
+  holdRaf = requestAnimationFrame(stepHold);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => {
+  btnRec.addEventListener(ev, () => {
+    if (holdStart && (performance.now() - holdStart) < HOLD_MS) {
+      toast('정지하려면 1초 동안 꾹 누르세요', 1400);
+    }
+    cancelHold();
+  });
+});
+
+/* =========================================================================
+   7. 다이얼 게이지 렌더링 & 감도 노브 드래그
+   ========================================================================= */
+const DB_MIN = -80, DB_MAX = -10;
+const ARC_LEN = 377; // π * 120
+
+function dbToNorm(db) {
+  return Math.min(1, Math.max(0, (db - DB_MIN) / (DB_MAX - DB_MIN)));
+}
+
+// 눈금 생성
+(function buildTicks() {
+  const g = $('gaugeTicks');
+  const count = 8;
+  let html = '';
+  for (let i = 0; i <= count; i++) {
+    const a = Math.PI * (1 - i / count);
+    const x1 = 160 + 132 * Math.cos(a), y1 = 165 - 132 * Math.sin(a);
+    const x2 = 160 + 140 * Math.cos(a), y2 = 165 - 140 * Math.sin(a);
+    html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+  g.innerHTML = html;
+})();
+
+function renderThresholdKnob() {
+  const norm = dbToNorm(cfg.threshold);
+  const a = Math.PI * (1 - norm);
+  const cx = 160 + 120 * Math.cos(a);
+  const cy = 165 - 120 * Math.sin(a);
+  $('thrCircle').setAttribute('cx', cx.toFixed(1));
+  $('thrCircle').setAttribute('cy', cy.toFixed(1));
+
+  // 안쪽/바깥쪽 틱 라인
+  const ix1 = 160 + 101 * Math.cos(a), iy1 = 165 - 101 * Math.sin(a);
+  const ix2 = 160 + 108 * Math.cos(a), iy2 = 165 - 108 * Math.sin(a);
+  const ox1 = 160 + 132 * Math.cos(a), oy1 = 165 - 132 * Math.sin(a);
+  const ox2 = 160 + 142 * Math.cos(a), oy2 = 165 - 142 * Math.sin(a);
+  $('thrLine1').setAttribute('x1', ox1.toFixed(1)); $('thrLine1').setAttribute('y1', oy1.toFixed(1));
+  $('thrLine1').setAttribute('x2', ox2.toFixed(1)); $('thrLine1').setAttribute('y2', oy2.toFixed(1));
+  $('thrLine2').setAttribute('x1', ix1.toFixed(1)); $('thrLine2').setAttribute('y1', iy1.toFixed(1));
+  $('thrLine2').setAttribute('x2', ix2.toFixed(1)); $('thrLine2').setAttribute('y2', iy2.toFixed(1));
+
+  const tx = 160 + 156 * Math.cos(a);
+  const ty = 165 - 156 * Math.sin(a);
+  const txt = $('thrChipText');
+  txt.setAttribute('x', tx.toFixed(1));
+  txt.setAttribute('y', ty.toFixed(1));
+  txt.textContent = `감도 ${cfg.threshold}`;
+}
+
+// 게이지 위에서 노란 칩 드래그로 감도 변경
+let draggingThr = false;
+function pointerToThreshold(e) {
+  const svg = $('gaugeSvg');
+  const rect = svg.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (320 / rect.width);
+  const y = (e.clientY - rect.top) * (205 / rect.height);
+  const dx = x - 160, dy = 165 - y;
+  let angle = Math.atan2(dy, dx);
+  angle = Math.max(0.08, Math.min(Math.PI - 0.08, angle));
+  const norm = 1 - (angle / Math.PI);
+  const db = Math.round(DB_MIN + norm * (DB_MAX - DB_MIN));
+  cfg.threshold = Math.max(-72, Math.min(-20, db));
+  saveCfg();
+  renderThresholdKnob();
+}
+$('thrKnob').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  draggingThr = true;
+  $('gaugeSvg').setPointerCapture(e.pointerId);
+});
+$('gaugeSvg').addEventListener('pointermove', e => {
+  if (!draggingThr) return;
+  pointerToThreshold(e);
+});
+['pointerup', 'pointercancel'].forEach(ev => {
+  $('gaugeSvg').addEventListener(ev, () => { draggingThr = false; });
+});
+
+let dispDb = -80, meterLoopOn = false, lastTextTs = 0;
+function meterStep(ts) {
+  if (document.visibilityState !== 'visible') { meterLoopOn = false; return; }
+  const target = (R.running && !R.sleeping) ? Math.max(-80, V.db) : -80;
+  dispDb = target > dispDb ? target : Math.max(target, dispDb - 1.4);
+  const norm = dbToNorm(dispDb);
+  $('arcFill').style.strokeDashoffset = String(ARC_LEN * (1 - norm));
+
+  if (ts - lastTextTs > 150) {
+    lastTextTs = ts;
+    $('dbNum').textContent = (R.running && !R.sleeping && dispDb > -79) ? String(Math.round(dispDb)) : '-∞';
+  }
+  setTimeout(() => requestAnimationFrame(meterStep), 80);
+}
+function startMeterLoop() {
+  if (!meterLoopOn && document.visibilityState === 'visible') {
+    meterLoopOn = true;
+    requestAnimationFrame(meterStep);
+  }
+}
+
+/* =========================================================================
+   8. 1초 타이머 & 상단/시계 UI 갱신
+   ========================================================================= */
+const WORKER_SRC = `let t=null;function s(){const d=1000-(Date.now()%1000);t=setTimeout(()=>{postMessage(Date.now());s();},d+3);}onmessage=e=>{if(e.data==='start'&&!t)s();};`;
+if(BB) { setInterval(() => onTick(Date.now()), 1000); } else try {
+  const w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+  w.onmessage = () => onTick(Date.now());
+  w.postMessage('start');
+} catch { setInterval(() => onTick(Date.now()), 1000); }
+
+function onTick(now) {
+  if(BB && document.visibilityState === 'visible') pollNative();
+  if (R.running && A.ctx) {
+    const sl = inSleep(now);
+    if (sl && !R.sleeping) enterSleep();
+    else if (!sl && R.sleeping && now >= (R.retryAt || 0)) exitSleep();
+    if (!R.sleeping && A.rec) {
+      if (V.voice && now - V.lastVoice > cfg.hangover * 1000 + 500) {
+        V.voice = false; if (cfg.vadOn) pauseRec();
+      }
+      if (now >= R.nextSplit) rotateSession();
+    }
+  }
+  if (document.visibilityState === 'visible') {
+    $('clockText').textContent = hms(now);
+    const liveMs = BB ? (R.nativeCurrentMs || 0) : ((R.running && A.rec) ? recOffset() : 0);
+    $('todayRecText').textContent = mmss((BB ? (R.nativeTodayMs || 0) : getTodaySavedMs()) + liveMs);
+    updateStatusUI();
+  }
+}
+
+function updateStatusUI() {
+  let txt = '대기 중 · 버튼을 눌러 녹음 시작', dotCls = 's-dot';
+  if (R.running) {
+    if (R.sleeping) { txt = `취침 모드 · ${cfg.sleepEnd}에 재개`; dotCls = 's-dot sleep'; }
+    else if (R.recActive) { txt = '일상에 귀기울이고 있습니다'; dotCls = 's-dot rec'; }
+    else { txt = '일상에 귀기울이고 있습니다'; dotCls = 's-dot rec'; }
+  }
+  $('topDot').className = $('filesDot').className = $('setDot').className = dotCls;
+  $('topStatusText').textContent = $('filesStatusText').textContent = $('setStatusText').textContent = txt;
+
+  btnRec.classList.toggle('idle', !R.running);
+  $('recHint').textContent = R.running ? '꾹 눌러 정지 · 1.0초' : '터치하여 녹음 시작';
+}
+
+/* =========================================================================
+   9. 저장 파일 목록 렌더링
+   ========================================================================= */
+function dateGroupTitle(ts) {
+  const now = Date.now(), d = new Date(ts);
+  const todayStr = ymd(now), yestStr = ymd(now - 86400000), curStr = ymd(ts);
+  const md = `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  if (curStr === todayStr) return `오늘 · ${md}`;
+  if (curStr === yestStr) return `어제 · ${md}`;
+  return md;
+}
+
+async function refreshFiles() {
+  if (!DB.db) return;
+  if(BB){
+    try { const r=await BB.listRecordings(); for(const f of r.files || []) await idbPut('files',{...f,native:true}); }
+    catch(e){toast('파일 목록 확인 실패: '+e.message);}
+  }
+  const all = (await idbGetAll('files')).filter(f => !/\.(txt|json)$/i.test(f.name)).sort((a, b) => b.created - a.created);
+  const todayStr = ymd(Date.now());
+  const todayFiles = all.filter(f => ymd(f.created) === todayStr);
+  R.nativeTodayMs=todayFiles.filter(f=>f.native).reduce((a,f)=>a+(f.durMs||0),0);
+  const totalBytes = all.reduce((acc, f) => acc + (f.size || 0), 0);
+
+  $('totalMbText').textContent = fsizeMB(totalBytes);
+  $('todayCountText').textContent = `오늘 ${todayFiles.length}개`;
+
+  if (!all.length) {
+    $('fileListContainer').innerHTML = `<div class="empty-files">아직 저장된 녹음 파일이 없습니다.</div>`;
+    return;
+  }
+
+  let html = '', lastGroup = '';
+  for (const f of all) {
+    const grp = dateGroupTitle(f.created);
+    if (grp !== lastGroup) {
+      html += `<div class="date-group-hdr">${grp}</div>`;
+      lastGroup = grp;
+    }
+    const baseName = f.name.replace(/\.\w+$/, '');
+    const subParts = [hm(f.created), mmss(f.durMs || 0), fsizeMB(f.size || 0)];
+    if (f.recovered) subParts.push('복구');
+    html += `
+      <div class="file-card">
+        <button class="play-btn" data-act="play" data-name="${esc(f.name)}" aria-label="재생">▶</button>
+        <div class="file-meta">
+          <div class="file-name mono">${esc(baseName)}</div>
+          <div class="file-sub mono">${subParts.join(' · ')}</div>
+        </div>
+        <button class="more-btn" data-act="more" data-name="${esc(f.name)}" aria-label="더보기">⋮</button>
+      </div>`;
+  }
+  $('fileListContainer').innerHTML = html;
+}
+
+$('fileListContainer').addEventListener('click', async e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const { act, name } = btn.dataset;
+  const rec = await idbGet('files', name); if (!rec) return;
+  if (rec.native) {
+    if(act==='play') {try{await BB.openRecording({uri:rec.uri});}catch(e){toast(e.message);}}
+    else openSheet(name,[{label:'외부 앱에서 열기 / 내보내기',onClick:()=>BB.shareRecording({uri:rec.uri}).catch(e=>toast(e.message))}]);
+    return;
+  }
+  if (act === 'play') {
+    const p = $('player');
+    if (p.src) URL.revokeObjectURL(p.src);
+    p.src = URL.createObjectURL(rec.blob);
+    p.hidden = false;
+    p.play().catch(() => {});
+  } else if (act === 'more') {
+    openSheet(name, [
+      { label: '파일 내려받기 / 내보내기', onClick: () => downloadBlob(rec.blob, rec.name) },
+      { label: '목록에서 삭제', danger: true, onClick: async () => { await idbDel('files', name); refreshFiles(); toast('삭제되었습니다'); } }
+    ]);
+  }
+});
+
+/* =========================================================================
+   10. 탭 전환 & 설정 바텀시트 제어
+   ========================================================================= */
+const TABS = ['rec', 'files', 'settings'];
+function switchTab(tab) {
+  TABS.forEach(t => {
+    $(`page-${t}`).hidden = (t !== tab);
+  });
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  if (tab === 'files') refreshFiles();
+}
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.onclick = () => switchTab(btn.dataset.tab);
+});
+
+function openSheet(title, options) {
+  const box = $('sheetContent');
+  box.innerHTML = `<h4>${esc(title)}</h4>` + options.map((o, i) =>
+    `<button class="sheet-opt ${o.selected ? 'sel' : ''}" style="${o.danger ? 'color:var(--red)' : ''}" data-idx="${i}">
+      <span>${esc(o.label)}</span><span>${o.selected ? '✓' : ''}</span>
+    </button>`
+  ).join('');
+  $('modalBackdrop').hidden = false;
+  box.querySelectorAll('.sheet-opt').forEach(b => {
+    b.onclick = () => {
+      $('modalBackdrop').hidden = true;
+      options[Number(b.dataset.idx)].onClick();
+    };
+  });
+}
+$('modalBackdrop').onclick = e => {
+  if (e.target === $('modalBackdrop')) $('modalBackdrop').hidden = true;
+};
+
+function syncSettingsUI() {
+  $('vadOn').checked = !!cfg.vadOn;
+  $('hangoverText').textContent = `${cfg.hangover}초`;
+  $('valSplit').textContent = cfg.splitMin >= 60 ? '1시간' : `${cfg.splitMin}분`;
+  $('valBitrate').textContent = `${cfg.bitrate / 1000} kbps`;
+  $('sleepOn').checked = !!cfg.sleepOn;
+  $('sleepStart').value = cfg.sleepStart;
+  $('sleepEnd').value = cfg.sleepEnd;
+  renderThresholdKnob();
+}
+
+$('vadOn').onchange = e => {
+  cfg.vadOn = e.target.checked; saveCfg();
+  if (R.running && A.rec) {
+    if (!cfg.vadOn) { resumeRec(); A.meta.vadOnly = false; }
+    else if (!V.voice) pauseRec();
+  }
+  toast(cfg.vadOn ? '무음 건너뛰기 켜짐' : '연속 녹음 모드');
+};
+
+$('btnHangover').onclick = () => {
+  const idx = (HANG_STEPS.indexOf(cfg.hangover) + 1) % HANG_STEPS.length;
+  cfg.hangover = HANG_STEPS[idx];
+  saveCfg(); syncSettingsUI();
+};
+
+$('rowSplit').onclick = () => {
+  const list = [[1, '1분 (테스트)'], [15, '15분'], [30, '30분 (권장)'], [60, '1시간']];
+  openSheet('자동 분할 간격', list.map(([v, lbl]) => ({
+    label: lbl, selected: cfg.splitMin === v,
+    onClick: () => { cfg.splitMin = v; saveCfg(); syncSettingsUI(); if (A.rec) R.nextSplit = nextBoundary(Date.now(), v); }
+  })));
+};
+
+$('rowBitrate').onclick = () => {
+  const list = [[16000, '16 kbps · 최대 절약'], [24000, '24 kbps · 권장 (1시간 ≈ 11MB)'], [32000, '32 kbps'], [48000, '48 kbps · 고음질']];
+  openSheet('음질 (비트레이트)', list.map(([v, lbl]) => ({
+    label: lbl, selected: cfg.bitrate === v,
+    onClick: () => { cfg.bitrate = v; saveCfg(); syncSettingsUI(); }
+  })));
+};
+
+$('sleepOn').onchange = e => { cfg.sleepOn = e.target.checked; saveCfg(); };
+$('sleepStart').onchange = e => { cfg.sleepStart = e.target.value; saveCfg(); };
+$('sleepEnd').onchange = e => { cfg.sleepEnd = e.target.value; saveCfg(); };
+
+$('rowBattOpt').onclick = async () => {
+  if (!BB) return toast('APK 설치 후 사용 가능합니다');
+  try {
+    const r = await BB.requestIgnoreBattery();
+    $('battBadge').textContent = (r && r.ignoring) ? '✓ 허용됨' : '설정 필요';
+    toast(r && r.ignoring ? '이미 배터리 최적화에서 제외되어 있습니다' : '팝업에서 허용을 눌러 주세요');
+  } catch { toast('설정 화면을 열 수 없습니다'); }
+};
+
+$('rowKeepOpenGuide').onclick = () => {
+  openSheet('백그라운드 녹음 안내', [
+    { label: '녹음은 네이티브 서비스에서 실행됩니다. 화면을 꺼도 계속 녹음합니다.', onClick: () => {} },
+    { label: '최근 앱에서 닫기 후 유지 여부는 기기에서 확인해 주세요.', onClick: () => {} },
+    { label: '강제 중지·재부팅 후에는 앱에서 녹음을 다시 시작해야 합니다.', onClick: () => {} }
+  ]);
+};
+
+if (navigator.getBattery) {
+  navigator.getBattery().then(b => {
+    const u = () => { $('battChip').textContent = `${b.charging ? '⚡' : '🔋'} ${Math.round(b.level * 100)}%`; };
+    u(); b.addEventListener('levelchange', u); b.addEventListener('chargingchange', u);
+  }).catch(() => {});
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    onTick(Date.now()); startMeterLoop();
+  } else if (A.rec && A.rec.state !== 'inactive') {
+    try { A.rec.requestData(); } catch {}
+  }
+});
+
+
+let nativePollBusy=false, lastNativeError='', nativeFileRefresh=0;
+async function pollNative(){
+  if(nativePollBusy)return;nativePollBusy=true;
+  try{
+    const v=await BB.status();
+    R.running=!!v.running;R.sleeping=!!v.sleeping;R.recActive=!!v.voice;R.nativeCurrentMs=v.recMs||0;R.nextSplit=v.nextSplit||0;V.db=v.db ?? -100;
+    if(v.error && v.error!==lastNativeError){lastNativeError=v.error;toast(v.error,6000);}
+    $('nativeInfo').textContent=(v.route || '휴대폰 내장 마이크')+(v.nextSplit?' · 다음 분할 '+hm(v.nextSplit):'');
+    updateStatusUI();startMeterLoop();
+    if(Date.now()-nativeFileRefresh>10000){nativeFileRefresh=Date.now();await refreshFiles();}
+    const d=await BB.driveStatus();$('driveInfo').textContent=(d.email?d.email+' · ':'')+d.status;
+    $('driveConnect').textContent=d.enabled?'계정 다시 연결':'구글 계정 연결';$('driveDisconnect').hidden=!d.enabled;
+  }catch(e){toast('앱 상태 확인 실패: '+e.message);}
+  finally{nativePollBusy=false;}
+}
+const nativePanel=document.createElement('div');
+nativePanel.style.cssText='margin:16px;padding:16px;border:1px solid #555;border-radius:16px;line-height:1.8';
+nativePanel.innerHTML='<b>네이티브 녹음 · v2.0</b><div id="nativeInfo">휴대폰 내장 마이크</div><hr><b>Google Drive 백업</b><div id="driveInfo">연결되지 않음</div><button id="driveConnect">구글 계정 연결</button> <button id="driveSync">지금 동기화</button> <button id="driveDisconnect" hidden>연결 해제</button><div style="font-size:12px">연결하면 이 버전에서 저장한 녹음을 Drive/LifeRecorder에 자동 업로드합니다. 연결 해제해도 업로드된 파일은 유지됩니다.</div>';
+$('page-settings').appendChild(nativePanel);
+$('driveConnect').onclick=async()=>{if(!BB)return toast('APK에서 사용 가능합니다');try{await BB.connectDrive();await pollNative();toast('구글 드라이브가 연결되었습니다');}catch(e){toast(e.message,8000);}};
+$('driveSync').onclick=async()=>{if(!BB)return;try{const d=await BB.driveStatus();if(!d.enabled)return toast('구글 계정을 먼저 연결하세요');await BB.syncDrive();toast('동기화를 예약했습니다');}catch(e){toast(e.message);}};
+$('driveDisconnect').onclick=async()=>{await BB.disconnectDrive();await pollNative();};
+
+(async function init() {
+  syncSettingsUI();
+  updateStatusUI();
+  try { await dbOpen(); await recoverOrphans(); await refreshFiles(); } catch {}
+  if(BB) await pollNative();
+  onTick(Date.now());
+  startMeterLoop();
+})();
+</script>
+</body>
+</html>
