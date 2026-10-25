@@ -307,14 +307,5 @@ public class BlackboxServicePlugin extends Plugin {
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);getActivity().startActivity(Intent.createChooser(i,"녹음 파일 내보내기"));call.resolve();
         }catch(Exception e){call.reject(e.getMessage());}
     }
-    @PluginMethod public void connectDrive(PluginCall call) {
-        getActivity().runOnUiThread(()->((MainActivity)getActivity()).connectDrive(call));
-    }
-    @PluginMethod public void disconnectDrive(PluginCall call) { DriveSync.disconnect(getContext());call.resolve(); }
-    @PluginMethod public void syncDrive(PluginCall call) { DriveSync.schedule(getContext());call.resolve(); }
-    @PluginMethod public void driveStatus(PluginCall call) {
-        android.content.SharedPreferences p=DriveSync.prefs(getContext());JSObject o=new JSObject();
-        o.put("enabled",p.getBoolean("enabled",false));o.put("email",p.getString("email",""));o.put("status",p.getString("status","연결되지 않음"));call.resolve(o);
-    }
 
 }

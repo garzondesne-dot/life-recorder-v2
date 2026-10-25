@@ -204,6 +204,7 @@ public final class NativeRecorder implements Runnable {
         }catch(Exception e){cr.delete(uri,null,null);throw e;}
         v.clear();v.put(MediaStore.MediaColumns.IS_PENDING,0);cr.update(uri,v,null,null);
         RecordingStore.add(c,base,uri.toString(),tmp.length(),last/1000+64,recovered,created);
-        journal.delete();tmp.delete();DriveSync.schedule(c);
+        journal.delete();tmp.delete();
     }
 }
+

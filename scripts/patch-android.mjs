@@ -13,10 +13,13 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'DriveSync.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
+// Drop generated old source; the recorder no longer links sync libraries.
+const oldSync = path.join(pkgDir, 'DriveSync.java');
+if (fs.existsSync(oldSync)) fs.rmSync(oldSync);
 // 템플릿이 Kotlin MainActivity를 만든 경우 중복 클래스 방지
 const kt = path.join(pkgDir, 'MainActivity.kt');
 if (fs.existsSync(kt)) fs.rmSync(kt);
@@ -72,6 +75,9 @@ if (!m.includes('.BlackboxService')) {
     </application>`);
 }
 m = m.replace(/android:stopWithTask="true"/g, 'android:stopWithTask="false"');
+if (!m.includes('com.google.android.apps.bard')) m = m.replace('</manifest>', `
+    <queries><package android:name="com.google.android.apps.bard" /></queries>
+</manifest>`);
 fs.writeFileSync(mf, m);
 console.log('[patch] AndroidManifest.xml updated');
 console.log('[patch] done ✔');
@@ -79,13 +85,10 @@ console.log('[patch] done ✔');
 // Reproducible native dependencies and application version.
 const gradleFile = path.join(android, 'app/build.gradle');
 let g = fs.readFileSync(gradleFile, 'utf8');
-if (!g.includes('play-services-auth:')) g += `
-dependencies {
-    implementation 'com.google.android.gms:play-services-auth:22.0.0'
-    implementation 'androidx.work:work-runtime:2.10.1'
-}
-`;
-g = g.replace(/versionCode \d+/, 'versionCode 2').replace(/versionName "[^"]*"/, 'versionName "2.0.0"');
+// Remove obsolete account/sync libraries when reusing an existing Android project.
+g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
+     .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
+g = g.replace(/versionCode \d+/, 'versionCode 3').replace(/versionName "[^"]*"/, 'versionName "2.1.0"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
@@ -105,3 +108,4 @@ android {
 `;
   fs.writeFileSync(gradleFile, g);
 }
+
