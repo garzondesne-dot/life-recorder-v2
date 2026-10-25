@@ -37,12 +37,27 @@ final class DailyLog {
         }
     }
     static synchronized String render(Context c,String date)throws Exception{
-        JSONObject all=read(c,date);StringBuilder text=new StringBuilder("Life Blackbox 하루 타임로그 — "+date+"\n기기 로컬 시간대: "+TimeZone.getDefault().getID()+"\n이 문서는 전사문이 아닙니다. 대화 내용은 음성 또는 별도 전사문을 분석하세요.\n재생 위치는 PCM 기준 근사값이며 AAC 인코딩 지연·기기 버퍼로 차이가 날 수 있습니다.\n과거 파일의 정확한 무음 구간은 추정하지 않습니다.\n\n");
+        return renderEntries(read(c,date),date);
+    }
+    private static String renderEntries(JSONObject all,String date)throws Exception{StringBuilder text=new StringBuilder("Life Blackbox 하루 타임로그 — "+date+"\n기기 로컬 시간대: "+TimeZone.getDefault().getID()+"\n이 문서는 전사문이 아닙니다. 대화 내용은 음성 또는 별도 전사문을 분석하세요.\n재생 위치는 PCM 기준 근사값이며 AAC 인코딩 지연·기기 버퍼로 차이가 날 수 있습니다.\n과거 파일의 정확한 무음 구간은 추정하지 않습니다.\n\n");
         List<JSONObject> entries=new ArrayList<>();Iterator<String> keys=all.keys();while(keys.hasNext())entries.add(all.getJSONObject(keys.next()));entries.sort(Comparator.comparingLong(o->o.optLong("created")));
         for(JSONObject entry:entries){text.append("파일: ").append(entry.getString("name")).append('\n');JSONArray spans=entry.getJSONArray("spans");
             if(spans.length()==0)text.append("구간별 시각 정보 없음 (이전 버전 또는 복구 기록)\n");
             for(int i=0;i<spans.length();i++){JSONObject p=spans.getJSONObject(i);text.append("재생 ").append(offset(p.getLong("from"))).append(" ~ ").append(offset(p.getLong("to"))).append(" → 실제 ").append(dateTime(p.getLong("start"))).append(" ~ ").append(dateTime(p.getLong("end"))).append('\n');}text.append('\n');
         }return text.toString();
+    }
+    static synchronized String renderFrozen(Context c,String date,long cutoff,java.util.Set<String> names)throws Exception{
+        JSONObject all=read(c,date), filtered=new JSONObject();java.util.Iterator<String> keys=all.keys();
+        while(keys.hasNext()){String key=keys.next();JSONObject e=new JSONObject(all.getJSONObject(key).toString());if(!names.contains(e.optString("name")))continue;
+            JSONArray src=e.getJSONArray("spans"), spans=new JSONArray();
+            for(int i=0;i<src.length();i++){JSONObject v=new JSONObject(src.getJSONObject(i).toString());long start=v.getLong("start"),end=Math.min(cutoff,v.getLong("end"));if(start>=end)continue;v.put("end",end).put("to",v.getLong("from")+end-start);spans.put(v);}
+            e.put("spans",spans);filtered.put(key,e);
+        }
+        // External/legacy recordings have no exact wall-clock map; include explicit unknown entries.
+        for(String name:names){boolean found=false;java.util.Iterator<String> it=filtered.keys();while(it.hasNext())if(name.equals(filtered.getJSONObject(it.next()).optString("name")))found=true;
+            if(!found)filtered.put("legacy:"+name,new JSONObject().put("name",name).put("created",0).put("spans",new JSONArray()));
+        }
+        return "내보내기 기준: "+dateTime(cutoff)+"\n"+renderEntries(filtered,date);
     }
     static synchronized Uri publish(Context c,String date)throws Exception{
         if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("날짜 형식 오류");

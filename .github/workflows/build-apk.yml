@@ -1,8 +1,8 @@
-name: Verify v2.3 foundation
+name: Build Life Blackbox v2.3
 
 on:
   push:
-    branches: [main, master, "feature/v2.3-foundation"]
+    branches: [main, master, "feature/v2.3-complete"]
   workflow_dispatch:
 
 permissions:
@@ -53,12 +53,12 @@ jobs:
           ./gradlew testDebugUnitTest assembleDebug lintDebug signingReport --no-daemon --stacktrace
 
       - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.2.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.3.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeRecorder-v2.2-APK
-          path: LifeRecorder-v2.2.apk
+          name: LifeRecorder-v2.3-APK
+          path: LifeRecorder-v2.3.apk
 
       - uses: actions/upload-artifact@v4
         if: always()

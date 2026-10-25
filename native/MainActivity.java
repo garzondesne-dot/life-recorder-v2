@@ -59,11 +59,15 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void handleOnBackPressed() {
                 WebView w = getBridge().getWebView();
-                if (w != null && w.canGoBack()) w.goBack();
+                if (w != null) w.evaluateJavascript("window.appBack ? window.appBack() : false", value -> {if(!"true".equals(value))moveTaskToBack(true);});
                 else moveTaskToBack(true);
             }
         });
     }
+    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);
+        if(getBridge()!=null)getBridge().getWebView().evaluateJavascript("window.checkLaunchExport && window.checkLaunchExport()",null);
+    }
 
 }
+
 
