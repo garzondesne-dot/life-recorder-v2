@@ -22,7 +22,10 @@ public final class NativeRecorder implements Runnable {
     private Thread thread;
     private final java.util.concurrent.ExecutorService publisher=java.util.concurrent.Executors.newSingleThreadExecutor();
     private MediaCodec codec;
-    private FileOutputStream out;
+    private FileOutputStream out, timeline;
+    private TimelineSegments spans;
+    private final ArrayDeque<Long> ringTimes=new ArrayDeque<>();
+    private long clockWall, clockMono;
     private File journal;
     private volatile long samples, fileStart, nextSplit, lastVoice, totalMs;
     private long lastSync;
@@ -82,6 +85,7 @@ public final class NativeRecorder implements Runnable {
         if(built==null || !input.setPreferredDevice(built))throw new IOException("내장 마이크 선택 실패");
         // Do not change global audio mode, SCO, speakerphone or audio focus.
         input.startRecording();
+        clockWall=System.currentTimeMillis();clockMono=SystemClock.elapsedRealtime();
         if(input.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IOException("마이크 시작 실패");
         checkRoute();
     }
@@ -100,18 +104,19 @@ public final class NativeRecorder implements Runnable {
         File dir=new File(ctx.getFilesDir(),"pending");dir.mkdirs();
         journal=new File(dir,"LBB_"+stamp(fileStart,"yyyyMMdd_HHmmss_SSS")+".aac");
         out=new FileOutputStream(journal);
+        timeline=new FileOutputStream(journal.getAbsolutePath()+".timeline");spans=new TimelineSegments();
         MediaFormat f=MediaFormat.createAudioFormat("audio/mp4a-latm",RATE,1);
         f.setInteger(MediaFormat.KEY_AAC_PROFILE,MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         f.setInteger(MediaFormat.KEY_BIT_RATE,cfg.optInt("bitrate",24000));
         f.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,FRAME*2);
         codec=MediaCodec.createEncoderByType("audio/mp4a-latm");codec.configure(f,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);codec.start();
     }
-    private void encode(short[] pcm) throws Exception {
+    private void encode(short[] pcm,long wall) throws Exception {
         int i;
         while((i=codec.dequeueInputBuffer(10000))<0){drain(false);if(stop&&Thread.currentThread().isInterrupted())Thread.interrupted();}
         ByteBuffer b=codec.getInputBuffer(i);b.clear(); b.order(ByteOrder.LITTLE_ENDIAN);
         for(short s:pcm)b.putShort(s);
-        codec.queueInputBuffer(i,0,pcm.length*2,samples*1000000/RATE,0);samples+=pcm.length;drain(false);
+        codec.queueInputBuffer(i,0,pcm.length*2,samples*1000000/RATE,0);timeline.write(spans.accept(samples*1000/RATE,pcm.length*1000/RATE,wall).getBytes(java.nio.charset.StandardCharsets.UTF_8));samples+=pcm.length;drain(false);
     }
     private void drain(boolean eos) throws Exception {
         MediaCodec.BufferInfo bi=new MediaCodec.BufferInfo(); long deadline=SystemClock.elapsedRealtime()+5000;
@@ -132,9 +137,9 @@ public final class NativeRecorder implements Runnable {
         try{int i=codec.dequeueInputBuffer(100000);if(i<0)throw new IOException("AAC 종료 버퍼 없음");
             codec.queueInputBuffer(i,0,0,samples*1000000/RATE,MediaCodec.BUFFER_FLAG_END_OF_STREAM);drain(true);
         }catch(Exception e){failure=e;}
-        finally{try{codec.stop();}catch(Exception ignored){}codec.release();codec=null;out.getFD().sync();out.close();out=null;}
+        finally{try{codec.stop();}catch(Exception ignored){}codec.release();codec=null;timeline.write(spans.flush().getBytes(java.nio.charset.StandardCharsets.UTF_8));timeline.getFD().sync();timeline.close();out.getFD().sync();out.close();out=null;}
         totalMs+=samples*1000/RATE;samples=0;
-        if(journal.length()==0)journal.delete(); else {
+        if(journal.length()==0){journal.delete();new File(journal.getAbsolutePath()+".timeline").delete();} else {
             final File ready=journal;
             publisher.submit(()->{
                 PowerManager pm=(PowerManager)ctx.getSystemService(Context.POWER_SERVICE);
@@ -152,22 +157,23 @@ public final class NativeRecorder implements Runnable {
             try { recover(ctx); } catch(Exception e) { service.recordError("일부 이전 파일 복구 보류: "+e.getMessage()); }
             while(!stop){
                 if(isSleep()){
-                    if(!sleeping){finishFile();closeInput();ring.clear();voice=false;sleeping=true;service.sleepNative(wakeAt());}
+                    if(!sleeping){finishFile();closeInput();ring.clear();ringTimes.clear();voice=false;sleeping=true;service.sleepNative(wakeAt());}
                     Thread.sleep(1000);continue;
                 }
-                if(input==null){service.wakeNative();sleeping=false;openInput();ring.clear();voice=false;above=0;beginFile();}
+                if(input==null){service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;beginFile();}
                 short[] pcm=new short[FRAME];int n=0;
                 while(n<FRAME&&!stop){int k=input.read(pcm,n,FRAME-n,AudioRecord.READ_BLOCKING);if(k<=0)throw new IOException("마이크 읽기 오류 "+k);n+=k;}
                 if(stop)break;
                 double sum=0;for(short x:pcm){double v=x/32768.0;sum+=v*v;}db=sum>0?10*Math.log10(sum/FRAME):-100;
                 long now=System.currentTimeMillis();
+                long frameWall=clockWall+SystemClock.elapsedRealtime()-clockMono-50;
                 if(db>cfg.optDouble("threshold",-50)){above++;if(above>=2){lastVoice=now;voice=true;}}else above=0;
                 if(voice&&now-lastVoice>cfg.optInt("hangover",3)*1000L)voice=false;
-                if(!cfg.optBoolean("vadOn",true)||voice){while(!ring.isEmpty())encode(ring.removeFirst());encode(pcm);}
-                else{ring.addLast(pcm);while(ring.size()>12)ring.removeFirst();}
+                if(!cfg.optBoolean("vadOn",true)||voice){while(!ring.isEmpty())encode(ring.removeFirst(),ringTimes.removeFirst());encode(pcm,frameWall);}
+                else{ring.addLast(pcm);ringTimes.addLast(frameWall);while(ring.size()>12){ring.removeFirst();ringTimes.removeFirst();}}
                 if(now>=nextSplit){finishFile();beginFile();}
                 if(now%1000<50)checkRoute();
-                if(now-lastSync>=10000){out.getFD().sync();lastSync=now;}
+                if(now-lastSync>=10000){out.getFD().sync();timeline.write(spans.flush().getBytes(java.nio.charset.StandardCharsets.UTF_8));timeline.getFD().sync();lastSync=now;}
             }
         }catch(InterruptedException ignored){}catch(Exception e){error=e.getMessage();service.recordError(error);}
         finally{try{finishFile();}catch(Exception e){error=e.getMessage();service.recordError(error);}closeInput();
@@ -204,7 +210,10 @@ public final class NativeRecorder implements Runnable {
         }catch(Exception e){cr.delete(uri,null,null);throw e;}
         v.clear();v.put(MediaStore.MediaColumns.IS_PENDING,0);cr.update(uri,v,null,null);
         RecordingStore.add(c,base,uri.toString(),tmp.length(),last/1000+64,recovered,created);
+        try { DailyLog.record(c,journal,base,created,last/1000+64);new File(journal.getAbsolutePath()+".timeline").delete(); }
+        catch(Exception logError){android.util.Log.e("LifeRecorder","Daily log pending",logError);}
         journal.delete();tmp.delete();
     }
 }
+
 

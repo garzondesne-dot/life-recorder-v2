@@ -9,7 +9,7 @@ const BB={
  status:async()=>({running,db:-40,route:'휴대폰 내장 마이크'}),listRecordings:async()=>({files:[]}),
  configure:async()=>{},addListener(){}
 };
-const exportFiles=Array.from({length:27},(_,i)=>({name:`LBB_${String(i).padStart(3,'0')}.m4a`,uri:`content://recordings/${i}`,size:2000,durMs:30000}));
+const exportFiles=Array.from({length:27},(_,i)=>({name:`LBB_${String(i).padStart(3,'0')}.m4a`,uri:`content://recordings/${i}`,size:2000,durMs:30000,created:Date.now()}));
 const EX={currentRecordings:async()=>({files:exportFiles,folder:'앱 녹음 전체'}),chooseFolder:async()=>{throw Error('폴더 선택을 취소했습니다');},shareBatch:async v=>{calls.push(['share',v]);return {direct:false,count:v.uris.length};}};
 const cap={isNativePlatform:()=>true,Plugins:{BlackboxService:BB,RecordingExport:EX}};
 const context={console,Date,Math,Promise,URL,Blob,performance:{now:()=>1},
@@ -31,15 +31,25 @@ assert.equal(vm.runInContext('R.running',context),false);
 console.log('Native UI start / status / duplicate-start / stop: PASS');
 
 
-await vm.runInContext('loadExport(false)',context);
+await vm.runInContext("$('exportSize').value='9';loadExport(false)",context);
 assert.equal(vm.runInContext('exportState.files.length',context),27);
 assert.equal(vm.runInContext('exportState.batches.length',context),3);
-assert.equal(vm.runInContext('exportState.batches[2].length',context),7);
-await vm.runInContext('sendExport(true)',context);
-assert.equal(calls.find(c=>c[0]==='share')[1].uris.length,10);
+assert.equal(vm.runInContext('exportState.batches[2].length',context),9);
+await vm.runInContext("sendExport('gemini')",context);
+assert.equal(calls.find(c=>c[0]==='share')[1].uris.length,9);
 assert.equal(vm.runInContext('exportState.index',context),0,'handoff must not imply upload success or advance');
 await vm.runInContext('loadExport(true)',context);
 assert.equal(vm.runInContext('exportState.files.length',context),27,'cancelled picker preserves existing queue');
 assert.equal(vm.runInContext('makeExportBatches([{uri:"a",name:"x"},{uri:"a",name:"x"},{uri:"b",name:"y"}],1).length',context),2);
 assert.equal(vm.runInContext('makeExportBatches([]).length',context),0);
 console.log('Whole-folder batching / deduplication / cancellation / explicit handoff: PASS');
+
+
+assert.ok(vm.runInContext('analysisPrompt()',context).includes('타임로그 TXT는 전사문이 아닙니다'));
+assert.ok(vm.runInContext('analysisPrompt()',context).includes('5대 프레임워크'));
+assert.equal(calls.find(c=>c[0]==='share')[1].target,'gemini');
+assert.ok(calls.find(c=>c[0]==='share')[1].date.match(/^\d{4}-\d{2}-\d{2}$/));
+assert.ok(calls.find(c=>c[0]==='share')[1].prompt.includes('담당자'));
+vm.runInContext("exportState.files=[{name:'LBB_20200101_090000.m4a',created:1,uri:'content://old'}];rebuildExport()",context);
+assert.equal(vm.runInContext('exportState.batches.length',context),0,'other dates must not be exported');
+console.log('Daily date filter / prompt / selected AI target: PASS');
