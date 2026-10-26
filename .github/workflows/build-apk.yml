@@ -1,8 +1,8 @@
-name: Build Life Blackbox v2.4.1
+name: Build Life Blackbox v2.4.2
 
 on:
   push:
-    branches: [main, master, "hotfix/v2.4.1"]
+    branches: [main, master, "hotfix/v2.4.2"]
   workflow_dispatch:
 
 permissions:
@@ -55,17 +55,17 @@ jobs:
       - name: Render UI previews
         run: |
           if command -v google-chrome >/dev/null; then
-            sudo apt-get update -qq && sudo apt-get install -y fonts-nanum >/dev/null || echo "Korean font installation unavailable"
+            timeout 60s sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=15 update -qq && timeout 60s sudo apt-get install -y fonts-nanum >/dev/null || echo "Korean font installation unavailable"
             node tests/render-preview.mjs
           else echo "Chrome unavailable; UI preview skipped"; fi
 
       - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.4.1.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.4.2.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeRecorder-v2.4.1-APK
-          path: LifeRecorder-v2.4.1.apk
+          name: LifeRecorder-v2.4.2-APK
+          path: LifeRecorder-v2.4.2.apk
 
       - uses: actions/upload-artifact@v4
         if: always()
