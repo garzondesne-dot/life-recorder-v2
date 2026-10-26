@@ -44,8 +44,9 @@ public final class NativeRecorder implements Runnable {
             ||mode==AudioManager.MODE_RINGTONE||mode==5||mode==6;
     }
     private void suspendInput(String reason) throws Exception {
-        // Finalize only on the audio thread; preserve the foreground session and wake lock.
-        closeInput();finishFile();ring.clear();ringTimes.clear();voice=false;above=0;db=-100;
+        // Keep the current AAC journal/encoder across calls: only the microphone is released.
+        // Its sample clock stays continuous while wall-clock spans retain the call gap.
+        closeInput();checkpoint();ring.clear();ringTimes.clear();voice=false;above=0;db=-100;
         interrupted=true;resumeNotice=true;interruptionReason=reason;normalSince=0;
         service.waitNative(reason);
     }
@@ -68,7 +69,8 @@ public final class NativeRecorder implements Runnable {
         ExportRequest request=new ExportRequest(date);
         if(stop||activeExport!=null||(!sleeping&&!interrupted&&input==null)){request.result.completeExceptionally(new IOException("녹음 초기화·종료 또는 내보내기 준비 중입니다. 잠시 후 다시 시도해 주세요"));return request.result;}
         activeExport=request;
-        if(sleeping||interrupted)queueSnapshot(request,System.currentTimeMillis(),null);else exportRequest.set(request);
+        // Even during a call, finalize the open window on the audio thread before snapshotting.
+        exportRequest.set(request);
         return request.result;
     }
     private void queueSnapshot(ExportRequest request,long cutoff,File current){
@@ -191,6 +193,19 @@ public final class NativeRecorder implements Runnable {
             }else if(i==MediaCodec.INFO_TRY_AGAIN_LATER){if(!eos)return;if(SystemClock.elapsedRealtime()>deadline)throw new IOException("AAC 종료 시간 초과");}
         }
     }
+    private void checkpoint() throws Exception {
+        if(codec!=null)drain(false);
+        if(out!=null){
+            timeline.write(spans.flush().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.getFD().sync();timeline.getFD().sync();lastSync=System.currentTimeMillis();
+        }
+    }
+    private void splitIfDue(long now) throws Exception {
+        if(codec!=null&&now>=nextSplit){
+            finishFile();ring.clear();ringTimes.clear();voice=false;above=0;
+        }
+    }
+    private void ensureFile() throws Exception {if(codec==null)beginFile();}
     private void finishFile() throws Exception {
         if(codec==null)return;
         Exception failure=null;
@@ -218,11 +233,13 @@ public final class NativeRecorder implements Runnable {
             boolean resumedPending=false;
             while(!stop){
               try {
+                // Advance clock-aligned windows even if a call spans a split boundary.
+                splitIfDue(System.currentTimeMillis());
                 ExportRequest request=exportRequest.getAndSet(null);
                 if(request!=null){
                     long cutoff=lastWallEnd>0?lastWallEnd:System.currentTimeMillis();
                     finishFile();ring.clear();ringTimes.clear();
-                    if(!isSleep()&&!interrupted){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
+                    if(!isSleep()&&!interrupted&&!callActive()){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
                 }
 
                 if(isSleep()){
@@ -239,7 +256,7 @@ public final class NativeRecorder implements Runnable {
                     if(normalSince==0)normalSince=mono;
                     if(mono-normalSince<1500||mono<retryAt){Thread.sleep(250);continue;}
                 }
-                if(input==null){resumedPending=sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;beginFile();}
+                if(input==null){resumedPending=sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;}
                 short[] pcm=new short[FRAME];int n=0;
                 long readDeadline=SystemClock.elapsedRealtime()+3000;
                 while(n<FRAME&&!stop){
@@ -260,6 +277,7 @@ public final class NativeRecorder implements Runnable {
                     if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;}
                 }
                 if(resumedPending){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","휴식 시간이 끝나 마이크 입력을 확인했습니다");resumedPending=false;}
+                splitIfDue(System.currentTimeMillis());ensureFile();
                 double sum=0;for(short x:pcm){double v=x/32768.0;sum+=v*v;}db=sum>0?10*Math.log10(sum/FRAME):-100;level(db);
                 long now=System.currentTimeMillis();
                 long frameWall=clockWall+SystemClock.elapsedRealtime()-clockMono-50;lastWallEnd=frameWall+50;
@@ -267,12 +285,11 @@ public final class NativeRecorder implements Runnable {
                 if(voice&&now-lastVoice>cfg.optInt("hangover",3)*1000L)voice=false;
                 if(!cfg.optBoolean("vadOn",true)||voice){while(!ring.isEmpty())encode(ring.removeFirst(),ringTimes.removeFirst());encode(pcm,frameWall);}
                 else{ring.addLast(pcm);ringTimes.addLast(frameWall);while(ring.size()>12){ring.removeFirst();ringTimes.removeFirst();}}
-                if(now>=nextSplit){finishFile();beginFile();}
                 if(now%1000<50){checkRoute();
                     if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
                         if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
                 }
-                if(now-lastSync>=10000){out.getFD().sync();timeline.write(spans.flush().getBytes(java.nio.charset.StandardCharsets.UTF_8));timeline.getFD().sync();lastSync=now;}
+                if(now-lastSync>=10000)checkpoint();
               } catch(InputUnavailable e){
                 if(stop)break;
                 suspendInput(callActive()?"통화로 녹음 대기 중":"마이크 복구 대기 중");

@@ -1,6 +1,6 @@
 {
   "name": "life-blackbox-recorder",
-  "version": "2.4.3",
+  "version": "2.4.4",
   "private": true,
   "description": "Life Blackbox Recorder - \uc800\uc804\ub825 \uc77c\uc0c1 \ub300\ud654 \ub179\uc74c\uae30 (Capacitor Android)",
   "scripts": {
