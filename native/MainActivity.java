@@ -58,6 +58,7 @@ public class MainActivity extends BridgeActivity {
             wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         }
         wv.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        wv.getSettings().setTextZoom(Math.max(100,Math.round(100*getResources().getConfiguration().fontScale)));
 
         // 뒤로 가기: 설정창이 열려 있으면 닫고(WebView history), 아니면 앱 종료 대신 홈으로 보내기
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
