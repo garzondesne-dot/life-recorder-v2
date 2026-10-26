@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -75,9 +75,13 @@ if (!m.includes('.BlackboxService')) {
     </application>`);
 }
 m = m.replace(/android:stopWithTask="true"/g, 'android:stopWithTask="false"');
+if (!m.includes('com.openai.chatgpt')) m=m.replace('</manifest>', '<queries><package android:name="com.openai.chatgpt"/><package android:name="com.anthropic.claude"/></queries></manifest>');
 if (!m.includes('com.google.android.apps.bard')) m = m.replace('</manifest>', `
     <queries><package android:name="com.google.android.apps.bard" /></queries>
 </manifest>`);
+if(!m.includes('${applicationId}.exports'))m=m.replace('</application>', `<provider android:name=".ExportFileProvider" android:authorities="\${applicationId}.exports" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" /></provider></application>`);
+const xmlDir=path.join(resDst,'xml');fs.mkdirSync(xmlDir,{recursive:true});
+fs.writeFileSync(path.join(xmlDir,'export_paths.xml'), '<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="daily_exports" path="exports/" /></paths>');
 fs.writeFileSync(mf, m);
 console.log('[patch] AndroidManifest.xml updated');
 console.log('[patch] done ✔');
@@ -88,7 +92,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 3').replace(/versionName "[^"]*"/, 'versionName "2.1.0"');
+g = g.replace(/versionCode \d+/, 'versionCode 6').replace(/versionName "[^"]*"/, 'versionName "2.4.0"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
@@ -109,3 +113,30 @@ android {
   fs.writeFileSync(gradleFile, g);
 }
 
+
+
+// Exercise the real metadata store against Android's ContentResolver in local unit tests.
+const testDir=path.join(android,'app/src/test/java/com/lifeblackbox/recorder');
+fs.mkdirSync(testDir,{recursive:true});
+const tests=path.join(root,'tests/android');
+if(fs.existsSync(tests))fs.cpSync(tests,testDir,{recursive:true});
+if(!g.includes('LIFE_RELIABILITY_TESTS')){
+  fs.appendFileSync(gradleFile, `
+// LIFE_RELIABILITY_TESTS
+android { testOptions { unitTests.includeAndroidResources = true } }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
+`);
+}
+
+
+// Keep launch surfaces true black in both system light and dark modes.
+const stylesFile=path.join(resDst,'values/styles.xml');
+if(fs.existsSync(stylesFile)){
+  let styles=fs.readFileSync(stylesFile,'utf8');
+  styles=styles.replace(/(<item name="windowSplashScreenBackground">)[^<]*/g,'$1@android:color/black');
+  if(!styles.includes('name="windowSplashScreenBackground"')) styles=styles.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/,'$1<item name="windowSplashScreenBackground">@android:color/black</item>');
+  fs.writeFileSync(stylesFile,styles);
+}

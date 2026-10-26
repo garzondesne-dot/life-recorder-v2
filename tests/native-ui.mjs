@@ -1,45 +1,32 @@
-import fs from 'node:fs';
-import vm from 'node:vm';
-import assert from 'node:assert/strict';
-const elements=new Map();
-const element=()=>({style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){},setAttribute(){},appendChild(){},querySelectorAll(){return[];},getBoundingClientRect(){return {left:0,top:0,width:320,height:205};}});
-const calls=[];let running=false;
-const BB={
- start:async o=>{calls.push(['start',o]);running=true;},stop:async()=>{calls.push(['stop']);running=false;},
- status:async()=>({running,db:-40,route:'휴대폰 내장 마이크'}),listRecordings:async()=>({files:[]}),
- configure:async()=>{},addListener(){}
-};
-const exportFiles=Array.from({length:27},(_,i)=>({name:`LBB_${String(i).padStart(3,'0')}.m4a`,uri:`content://recordings/${i}`,size:2000,durMs:30000}));
-const EX={currentRecordings:async()=>({files:exportFiles,folder:'앱 녹음 전체'}),chooseFolder:async()=>{throw Error('폴더 선택을 취소했습니다');},shareBatch:async v=>{calls.push(['share',v]);return {direct:false,count:v.uris.length};}};
-const cap={isNativePlatform:()=>true,Plugins:{BlackboxService:BB,RecordingExport:EX}};
-const context={console,Date,Math,Promise,URL,Blob,performance:{now:()=>1},
- window:{Capacitor:cap},Capacitor:cap,navigator:{mediaDevices:{getUserMedia(){throw Error('Native mode must never request WebView audio');}}},
- document:{visibilityState:'visible',getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[],addEventListener(){}},
- localStorage:{getItem:()=>null,setItem(){}},setTimeout:()=>1,clearTimeout(){},setInterval(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){}};
-vm.createContext(context);
-const html=fs.readFileSync('www/index.html','utf8');vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],context);
-await new Promise(resolve=>setImmediate(resolve));
-await vm.runInContext('startAll()',context);
-assert.equal(calls.filter(c=>c[0]==='start').length,1);
-assert.equal(calls[0][1].config.splitMin,30);
-assert.equal(vm.runInContext('R.running',context),true);
-await vm.runInContext('startAll()',context);
-assert.equal(calls.filter(c=>c[0]==='start').length,1,'duplicate start must be ignored');
-vm.runInContext('stopAll()',context);await vm.runInContext('pollNative()',context);
-assert.equal(calls.filter(c=>c[0]==='stop').length,1);
-assert.equal(vm.runInContext('R.running',context),false);
-console.log('Native UI start / status / duplicate-start / stop: PASS');
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const html=fs.readFileSync('www/index.html','utf8'),elements=new Map();
+function el(){return {hidden:false,disabled:false,value:'',checked:false,textContent:'',innerHTML:'',style:{setProperty(){}},dataset:{},children:[],events:{},scrollTop:0,scrollIntoView(){},classList:{toggle(){},add(){},remove(){}},setAttribute(){},appendChild(x){this.children.push(x);},addEventListener(k,f){(this.events[k]??=[]).push(f);},dispatch(k,e={}){for(const f of this.events[k]||[])f({button:0,detail:1,preventDefault(){},...e});}};}
+for(const m of html.matchAll(/id="([^"]+)"/g)){assert.ok(!elements.has(m[1]),'duplicate id '+m[1]);elements.set(m[1],el());}
+for(const m of html.matchAll(/\$\('([^']+)'\)/g))assert.ok(elements.has(m[1]),'missing id '+m[1]);
+elements.get('rangeStart').value='00:00';elements.get('rangeEnd').value='23:59';elements.get('purpose').value='brief';elements.get('batchSize').value='9';
+let running=false,now=0;const timers=new Map(),saved=new Map();let seq=0,prepares=0,shares=0;const calls=[];const day=new Date().toLocaleDateString('en-CA');
+const date=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const files=Array.from({length:10},(_,i)=>({name:`LBB_${date().replaceAll('-','')}_1200${String(i).padStart(2,'0')}.m4a`,uri:`content://recording/${i}`,size:10000,created:Date.now()-1000,durMs:500,days:[date()]}));
+const BB={status:async()=>({running,sleeping:false,db:-40,recMs:500}),listRecordings:async()=>({files}),configure:async()=>{},start:async()=>{running=true;},stop:async()=>{running=false;},notificationStatus:async()=>({allowed:false}),launchExport:async()=>({token:null})};
+const EX={prepareSnapshot:async({date})=>{prepares++;return {date,token:'123',cutoff:Date.now(),files:[...files]};},shareBatch:async o=>{shares++;calls.push(o);return {direct:true};},copyPrompt:async()=>{}};
+const cap={isNativePlatform:()=>true,Plugins:{BlackboxService:BB,RecordingExport:EX}};const main=el(),document={body:el(),activeElement:null,visibilityState:'visible',getElementById:id=>elements.get(id),querySelector:()=>main,querySelectorAll:()=>[],createElement:el,addEventListener(){}};
+const context={console,window:{Capacitor:cap,confirm:()=>true},Capacitor:cap,document,Date,Map,Set,JSON,Math,Promise,Intl,performance:{now:()=>now},localStorage:{getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)},setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),requestAnimationFrame:()=>++seq,cancelAnimationFrame(){}};vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],context);
+const run=code=>vm.runInContext(code,context),flush=()=>new Promise(r=>setImmediate(r));await flush();
+await run('startRecord()');assert.equal(running,true);await run('stopRecord()');await run('poll()');assert.equal(running,false);
+await run('prepareExport(state.date)');assert.equal(run('state.batches.length'),2);assert.equal(run('selectedBatch().length'),9);assert.equal(run('state.page'),'prepare');
+await run('sendExport()');assert.equal(shares,1);assert.equal(calls[0].token,'123');assert.ok(calls[0].prompt.includes('사용자 분석 우선순위'));assert.equal(run('statusFor(state.date,"gemini").count'),0,'sharing must never auto-confirm');
+elements.get('confirmBatch').onclick();assert.equal(run('statusFor(state.date,"gemini").count'),9);
+elements.get('nextBatch').onclick();await run('sendExport()');elements.get('confirmBatch').onclick();assert.equal(run('statusFor(state.date,"gemini").complete'),true);
+files.push({...files[0],uri:'content://recording/new',name:'new.m4a'});assert.equal(run('statusFor(state.date,"gemini").newCount'),1,'new audio must retain old confirmations');
+const button=elements.get('exportBtn');run('show("home")');let initial=prepares;
+button.dispatch('pointerdown');now=200;button.dispatch('pointerup');button.dispatch('click');await flush();assert.equal(run('state.page'),'archive');assert.equal(prepares,initial,'short tap must not rotate recording');
+run('show("home")');button.dispatch('pointerdown');now+=1500;const hold=[...timers.values()].find(x=>x.ms===1500);assert.ok(hold);hold.fn();button.dispatch('pointerup');button.dispatch('click');await flush();assert.equal(prepares,initial+1);assert.equal(run('state.page'),'home','quick hold must not open intermediate screen');assert.equal(calls.at(-1).uris.length,9);assert.equal(calls.at(-1).target,'share');
+run('show("home")');button.dispatch('pointerdown');button.dispatch('pointerleave');assert.ok(![...timers.values()].some(x=>x.ms===1500),'leaving cancels hold');button.dispatch('click',{detail:0});await flush();assert.equal(run('state.page'),'archive','assistive click must work');
+console.log('UI IDs / native start-stop / snapshot token / no auto-confirm / stable history / new audio / tap-hold cancellation / assistive click: PASS');
+context.localStorage.key=i=>[...saved.keys()][i];Object.defineProperty(context.localStorage,'length',{get:()=>saved.size});saved.delete('lbb_v23_migrated');run('history={}');
+const oldKey='lbb_v22_sent_'+date()+'_gemini_'+JSON.stringify([files.slice(0,9).map(f=>f.uri),files.slice(9).map(f=>f.uri)])+'_brief_00:00_23:59';saved.set(oldKey,'[0]');run('migrateLegacyHistory()');assert.equal(run('statusFor(state.date,"gemini").count'),9);assert.ok(saved.has(oldKey),'legacy data is never deleted');console.log('v2.2 confirmation migration: PASS');
 
-
-await vm.runInContext('loadExport(false)',context);
-assert.equal(vm.runInContext('exportState.files.length',context),27);
-assert.equal(vm.runInContext('exportState.batches.length',context),3);
-assert.equal(vm.runInContext('exportState.batches[2].length',context),7);
-await vm.runInContext('sendExport(true)',context);
-assert.equal(calls.find(c=>c[0]==='share')[1].uris.length,10);
-assert.equal(vm.runInContext('exportState.index',context),0,'handoff must not imply upload success or advance');
-await vm.runInContext('loadExport(true)',context);
-assert.equal(vm.runInContext('exportState.files.length',context),27,'cancelled picker preserves existing queue');
-assert.equal(vm.runInContext('makeExportBatches([{uri:"a",name:"x"},{uri:"a",name:"x"},{uri:"b",name:"y"}],1).length',context),2);
-assert.equal(vm.runInContext('makeExportBatches([]).length',context),0);
-console.log('Whole-folder batching / deduplication / cancellation / explicit handoff: PASS');
+run("profile.priorities=['todo','speech'];profile.extra='가족 부탁 표현';state.customPrompt=null");const prompt=run('buildPrompt()');assert.ok(prompt.indexOf('1순위: 할 일·약속')<prompt.indexOf('2순위: 언어습관·말하기'));assert.ok(!prompt.includes('서환'));assert.ok(prompt.includes('후속 묶음'));assert.ok(prompt.includes('전사문이 아니'));
+run("show('home');state.snapshot.files=[...state.all];state.batches=makeBatches(state.all,9);state.index=0;state.quick=true");const beforeShares=shares;await elements.get('quickNext').onclick();assert.equal(shares,beforeShares+1);assert.equal(calls.at(-1).uris.length,2);assert.ok(!calls.at(-1).uris.includes(calls.at(-2).uris[0]));
+run("cfg.restSchedules=[{name:'취침',start:'23:00',end:'07:00',days:[1,2],enabled:true}];editRest(0)");assert.equal(elements.get('restStart').value,'23:00');elements.get('restEnd').value='08:00';elements.get('saveRest').onclick();assert.equal(run('cfg.restSchedules[0].end'),'08:00');
+console.log('Priority prompt / no private-name leakage / direct handoff / next batch / recurring schedule editing: PASS');

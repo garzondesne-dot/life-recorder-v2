@@ -92,6 +92,7 @@ public class BlackboxServicePlugin extends Plugin {
         try {
             Intent i = new Intent(getContext(), BlackboxService.class);
             i.putExtra(BlackboxService.EXTRA_TEXT, call.getString("text", BlackboxService.DEFAULT_TEXT));
+            persistSettings(call.getObject("config",new JSObject()));
             i.putExtra("config", call.getObject("config", new JSObject()).toString());
             ContextCompat.startForegroundService(getContext(), i);
             call.resolve();
@@ -281,11 +282,13 @@ public class BlackboxServicePlugin extends Plugin {
         } catch(Exception e){call.reject(e.getMessage());}
     }
     @PluginMethod public void configure(PluginCall call) {
-        NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(call.getObject("config",new JSObject()));call.resolve();
+        try{JSObject config=call.getObject("config",new JSObject());persistSettings(config);NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(config);call.resolve();}catch(Exception e){call.reject(e.getMessage());}
     }
     @PluginMethod public void listRecordings(PluginCall call) {
-        try {JSObject o=new JSObject();o.put("files",RecordingStore.list(getContext()));call.resolve(o);}
-        catch(Exception e){call.reject(e.getMessage());}
+        new Thread(()->{
+            try {JSObject o=new JSObject();o.put("files",RecordingStore.list(getContext()));call.resolve(o);}
+            catch(Exception e){call.reject(e.getMessage());}
+        },"Recording-Index").start();
     }
     @PluginMethod public void openRecording(PluginCall call) {
         try {
@@ -308,4 +311,19 @@ public class BlackboxServicePlugin extends Plugin {
         }catch(Exception e){call.reject(e.getMessage());}
     }
 
+    private void persistSettings(JSObject config){
+        try{org.json.JSONArray rests=RestSchedule.normalize(config);getContext().getSharedPreferences("recorder-settings",0).edit().putBoolean("reminderOn",config.optBoolean("reminderOn",false)).putBoolean("sleepOn",rests.length()>0).putBoolean("restNotify",config.optBoolean("restNotify",true)).putInt("retentionDays",config.optInt("retentionDays",0)).apply();}catch(Exception invalid){throw new IllegalArgumentException(invalid.getMessage());}
+    }
+    @PluginMethod public void cleanup(PluginCall call){RetentionManager.request(getContext());call.resolve();}
+    @PluginMethod public void notificationStatus(PluginCall call){JSObject o=new JSObject();o.put("allowed",androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());call.resolve(o);}
+    @PluginMethod public void allowNotifications(PluginCall call){
+        if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED)requestPermissionForAlias("notifications",call,"afterReminderPermission");
+        else {Intent i=new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());getActivity().startActivity(i);call.resolve();}
+    }
+    @PermissionCallback private void afterReminderPermission(PluginCall call){notificationStatus(call);}
+    @PluginMethod public void launchExport(PluginCall call){
+        String token=getActivity().getIntent().getStringExtra("exportToken");getActivity().getIntent().removeExtra("exportToken");JSObject o=new JSObject();o.put("token",token);call.resolve(o);
+    }
+
 }
+
