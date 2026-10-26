@@ -77,9 +77,9 @@ final class DailyLog {
             }}
         }
     }
+    private static Set<String> manifestDates(Context c){Set<String> dates=new TreeSet<>();File[] files=new File(c.getFilesDir(),"daily-timeline").listFiles();if(files!=null)for(File f:files){String name=f.getName().replaceFirst("\\.bak$","");if(name.matches("\\d{4}-\\d{2}-\\d{2}\\.json"))dates.add(name.substring(0,10));}return dates;}
     static synchronized void removeNames(Context c,Set<String> removed)throws Exception{
-        File[] files=new File(c.getFilesDir(),"daily-timeline").listFiles((d,n)->n.endsWith(".json"));if(files==null)return;
-        for(File f:files){String date=f.getName().replace(".json","");JSONObject all=read(c,date);List<String> keys=new ArrayList<>();Iterator<String> it=all.keys();while(it.hasNext()){String key=it.next();if(removed.contains(all.getJSONObject(key).optString("name")))keys.add(key);}if(keys.isEmpty())continue;
+        for(String date:manifestDates(c)){JSONObject all=read(c,date);List<String> keys=new ArrayList<>();Iterator<String> it=all.keys();while(it.hasNext()){String key=it.next();if(removed.contains(all.getJSONObject(key).optString("name")))keys.add(key);}if(keys.isEmpty())continue;
             for(String key:keys)all.remove(key);
             if(all.length()>0){write(manifest(c,date),all);publish(c,date);}else{
                 ContentResolver cr=c.getContentResolver();cr.delete(MediaStore.Files.getContentUri("external"),"_display_name=? AND relative_path=? AND owner_package_name=?",new String[]{"LifeRecorder_"+date+"_timelog.txt","Documents/LifeRecorder/"+date+"/",c.getPackageName()});manifest(c,date).delete();
@@ -93,9 +93,23 @@ final class DailyLog {
             JSONArray spans=entry.getJSONArray("spans");for(int j=0;j<spans.length();j++){JSONObject span=spans.getJSONObject(j);from=Math.min(from,span.getLong("start"));to=Math.max(to,span.getLong("end"));}
         }}return new long[]{from==Long.MAX_VALUE?0:from,to};
     }
+    /** One pass per request instead of re-reading every date for every recording. */
+    static synchronized Map<String,JSONObject> summaries(Context c)throws Exception{
+        Map<String,JSONObject> result=new HashMap<>();
+        for(String date:manifestDates(c)){JSONObject all=read(c,date);Iterator<String> keys=all.keys();
+            while(keys.hasNext()){JSONObject e=all.getJSONObject(keys.next());String name=e.getString("name");JSONObject v=result.get(name);
+                if(v==null){v=new JSONObject().put("days",new JSONArray()).put("wallStart",0).put("wallEnd",0);result.put(name,v);}JSONArray days=v.getJSONArray("days");boolean seen=false;for(int d=0;d<days.length();d++)if(date.equals(days.getString(d)))seen=true;if(!seen)days.put(date);
+                JSONArray spans=e.getJSONArray("spans");for(int j=0;j<spans.length();j++){JSONObject span=spans.getJSONObject(j);long a=span.getLong("start"),b=span.getLong("end");v.put("wallStart",v.optLong("wallStart")==0?a:Math.min(v.getLong("wallStart"),a)).put("wallEnd",Math.max(v.optLong("wallEnd"),b));}
+            }
+        }return result;
+    }
+    static synchronized void replaceMerged(Context c,String date,Set<String> names,JSONObject entry)throws Exception{
+        JSONObject all=read(c,date);List<String> keys=new ArrayList<>();Iterator<String> it=all.keys();while(it.hasNext()){String k=it.next();if(names.contains(all.getJSONObject(k).optString("name")))keys.add(k);}for(String k:keys)all.remove(k);
+        all.put("window:"+entry.getString("name"),entry);write(manifest(c,date),all);publish(c,date);
+    }
     static synchronized JSONArray datesFor(Context c,String name)throws Exception{
-        JSONArray result=new JSONArray();File[] files=new File(c.getFilesDir(),"daily-timeline").listFiles((d,n)->n.endsWith(".json"));
-        if(files!=null)for(File f:files){String date=f.getName().replace(".json","");JSONObject all=read(c,date);Iterator<String> keys=all.keys();while(keys.hasNext())if(name.equals(all.getJSONObject(keys.next()).optString("name"))){result.put(date);break;}}
+        JSONArray result=new JSONArray();
+        for(String date:manifestDates(c)){JSONObject all=read(c,date);Iterator<String> keys=all.keys();while(keys.hasNext())if(name.equals(all.getJSONObject(keys.next()).optString("name"))){result.put(date);break;}}
         return result;
     }
 }

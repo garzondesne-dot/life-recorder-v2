@@ -45,3 +45,12 @@ assert.equal(elements.get('recBtn').disabled,false,'manual stop remains availabl
 run("Object.assign(state,{sleeping:true});renderHome()");
 assert.ok(elements.get('recStatus').textContent.includes('녹음 휴식 중'),'scheduled rest takes UI priority');
 console.log('Call wait status / manual stop availability / scheduled rest priority: PASS');
+assert.equal(elements.has('split'),false,'fixed two-hour organization replaces user interval selection');
+assert.equal(run("Object.hasOwn(cfg,'splitMin')"),false,'old interval config is migrated away');
+assert.ok(!fs.readFileSync('native/BlackboxServicePlugin.java','utf8').includes('saveAudio('));
+assert.equal(JSON.parse(fs.readFileSync('package.json','utf8')).dependencies['@capacitor/filesystem'],undefined);
+console.log('Fixed interval migration / retired saver and unused plugin removed: PASS');
+assert.match(run("recordingLabel({name:'LBB_20261026_100000_000_W1792976400000_Mrevision.m4a'})"),/\d{2}:\d{2}–\d{2}:\d{2} 기록/);
+run("state.all=[{name:'revision.m4a',uri:'content://new/revision',size:200,created:Date.now()}];history[state.date]={gemini:{ids:{old:123},everComplete:true}};renderArchive()");
+assert.ok(elements.get('historyList').innerHTML.includes('새 녹음 1개 · 다시 확인 필요'));
+console.log('Window range labels / superseded export confirmation requests review: PASS');

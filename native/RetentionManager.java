@@ -17,7 +17,8 @@ final class RetentionManager {
  static void request(Context context){Context c=context.getApplicationContext();int days=c.getSharedPreferences("recorder-settings",0).getInt("retentionDays",0);if(!supported(days)||!busy.compareAndSet(false,true))return;
   new Thread(()->{try{sweep(c,days,System.currentTimeMillis());}catch(Exception e){android.util.Log.e("LifeRecorder","Cleanup deferred",e);}finally{busy.set(false);}},"Recording-Cleanup").start();
  }
- static synchronized void sweep(Context c,int days,long now)throws Exception{
+ static void sweep(Context c,int days,long now)throws Exception{synchronized(ExportSnapshot.class){sweepLocked(c,days,now);}}
+ static void sweepLocked(Context c,int days,long now)throws Exception{
   if(!supported(days))return;android.content.SharedPreferences p=c.getSharedPreferences("recorder-settings",0);String runKey=DailyLog.day(now)+":"+days;
   finishLogCleanup(c,p);if(runKey.equals(p.getString("lastCleanup","")))return;
   Set<String> protectedNames=new HashSet<>();File[] snapshots=new File(c.getCacheDir(),"exports").listFiles();

@@ -37,7 +37,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RecordingExportPlugin.class);
         registerPlugin(BlackboxServicePlugin.class);   // super.onCreate 이전에 등록해야 함
         super.onCreate(savedInstanceState);
-        getSharedPreferences("drive",0).edit().clear().apply();
+        if(!getPreferences(0).getBoolean("driveRemoved",false)){getSharedPreferences("drive",0).edit().clear().apply();getPreferences(0).edit().putBoolean("driveRemoved",true).apply();}
 
         // 안드로이드 15+ 강제 전체화면(edge-to-edge): 상태바·내비게이션바·폴드 힌지 영역만큼 화면을 안쪽으로 줄여 하단 잘림 방지
         getWindow().getDecorView().setBackgroundColor(android.graphics.Color.BLACK);
@@ -53,7 +53,7 @@ public class MainActivity extends BridgeActivity {
         });
 
         WebView wv = getBridge().getWebView();
-        // 화면이 꺼지거나 앱이 가려져도 WebView 렌더러(=JS·오디오 처리)를 '중요' 우선순위로 유지
+        // 화면이 꺼지거나 앱이 가려져도 WebView 렌더러를 '중요' 우선순위로 유지
         if (Build.VERSION.SDK_INT >= 26) {
             wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         }

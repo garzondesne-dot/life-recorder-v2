@@ -15,27 +15,11 @@ import java.util.*;
 public class RecordingExportPlugin extends Plugin {
     private final Map<String,Long> allowed = new HashMap<>();
     private final Map<String,JSONObject> catalog = new HashMap<>();
-    private static final long MAX_BYTES=100L*1024*1024;
     private static final String GEMINI="com.google.android.apps.bard";
     private volatile boolean scanning;
 
     @PluginMethod public void chooseFolder(PluginCall call) {
         getActivity().runOnUiThread(()->((MainActivity)getActivity()).chooseRecordingFolder(call,this));
-    }
-    @PluginMethod public void currentRecordings(PluginCall call) {
-        new Thread(()->{try{
-            JSONArray a=RecordingStore.list(getContext()), clean=new JSONArray();
-            synchronized(allowed){allowed.clear();catalog.clear();for(int i=0;i<a.length();i++){
-                JSONObject f=a.getJSONObject(i);String uri=f.getString("uri");
-                // Audio removed outside this app should not appear in a share request.
-                try(android.os.ParcelFileDescriptor fd=getContext().getContentResolver().openFileDescriptor(Uri.parse(uri),"r")){
-                    if(fd==null)continue;
-                }catch(Exception missing){continue;}
-                long[] bounds=DailyLog.bounds(getContext(),f.optString("name"));f.put("wallStart",bounds[0]).put("wallEnd",bounds[1]);
-                f.put("days",DailyLog.datesFor(getContext(),f.optString("name")));allowed.put(uri,f.optLong("size"));catalog.put(uri,f);clean.put(f);
-            }}
-            JSObject o=new JSObject();o.put("files",clean);o.put("folder","앱에 저장된 녹음 전체");call.resolve(o);
-        }catch(Exception e){call.reject("녹음 목록을 불러오지 못했습니다: "+e.getMessage());}},"Recording-List").start();
     }
     void readFolder(Uri tree,PluginCall call) {
         if(scanning){call.reject("폴더를 읽는 중입니다");return;}scanning=true;
@@ -112,7 +96,7 @@ public class RecordingExportPlugin extends Plugin {
             NativeRecorder recorder=NativeRecorder.instance;JSONObject result;
             if(recorder!=null)result=recorder.prepareExport(date).get(120,java.util.concurrent.TimeUnit.SECONDS);
             else {
-                DailyLog.repairPending(getContext());JSONArray all=RecordingStore.list(getContext());
+                DailyLog.repairPending(getContext());WindowMerger.reconcile(getContext());JSONArray all=RecordingStore.list(getContext());
                 synchronized(allowed){for(JSONObject row:catalog.values())all.put(row);}
                 result=ExportSnapshot.create(getContext(),date,System.currentTimeMillis(),all);
             }
@@ -125,29 +109,8 @@ public class RecordingExportPlugin extends Plugin {
         Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"text/plain").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         getActivity().runOnUiThread(()->{try{getActivity().startActivity(i);call.resolve();}catch(Exception e){call.reject("TXT를 열 앱이 없습니다");}});
     }catch(Exception e){call.reject(e.getMessage());}},"Open-Log").start();}
-    @PluginMethod public void prepareDaily(PluginCall call) {
-        new Thread(()->{try{
-            String date=call.getString("date","");if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("날짜 형식 오류");
-            DailyLog.repairPending(getContext());
-            JSONArray recordings=RecordingStore.list(getContext());
-            synchronized(allowed){for(JSONObject f:catalog.values())recordings.put(f);}
-            for(int i=0;i<recordings.length();i++){JSONObject f=recordings.getJSONObject(i);
-                String name=f.optString("name");long created=f.optLong("created");
-                if(name.matches("LBB_\\d{8}_\\d{6}.*"))try{created=new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).parse(name.substring(4,19)).getTime();}catch(Exception ignored){}
-                if(date.equals(DailyLog.day(created))&&DailyLog.datesFor(getContext(),f.optString("name")).length()==0)
-                    DailyLog.record(getContext(),new java.io.File(getContext().getCacheDir(),"legacy_"+f.optString("name")),f.optString("name"),created,f.optLong("durMs"));
-            }
-            Uri uri=DailyLog.publish(getContext(),date);JSObject o=new JSObject();o.put("uri",uri.toString());o.put("name","LifeRecorder_"+date+"_timelog.txt");call.resolve(o);
-        }catch(Exception e){call.reject(e.getMessage());}},"Daily-Log").start();
-    }
     @PluginMethod public void copyPrompt(PluginCall call) {
         android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setPrimaryClip(ClipData.newPlainText("AI 분석 지침",call.getString("prompt","")));call.resolve();
     }
-    @PluginMethod public void openGemini(PluginCall call) {
-        getActivity().runOnUiThread(()->{try{
-            getActivity().startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://gemini.google.com/app")));call.resolve();
-        }catch(Exception e){call.reject("Gemini를 열 수 없습니다");}});
-    }
 }
-

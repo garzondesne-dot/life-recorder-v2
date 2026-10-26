@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java', 'RecordingWindow.java', 'WindowMerger.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -92,7 +92,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 10').replace(/versionName "[^"]*"/, 'versionName "2.4.4"');
+g = g.replace(/versionCode \d+/, 'versionCode 11').replace(/versionName "[^"]*"/, 'versionName "2.4.5"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
@@ -140,3 +140,20 @@ if(fs.existsSync(stylesFile)){
   if(!styles.includes('name="windowSplashScreenBackground"')) styles=styles.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/,'$1<item name="windowSplashScreenBackground">@android:color/black</item>');
   fs.writeFileSync(stylesFile,styles);
 }
+
+// Real AAC/MediaStore integration runs only in the disposable CI emulator.
+const instrumentDir=path.join(android,'app/src/androidTest/java/com/lifeblackbox/recorder');
+fs.mkdirSync(instrumentDir,{recursive:true});
+const instrument=path.join(root,'tests/instrumentation');
+if(fs.existsSync(instrument))fs.cpSync(instrument,instrumentDir,{recursive:true});
+if(!g.includes('LIFE_AUDIO_INTEGRATION'))fs.appendFileSync(gradleFile, `
+// LIFE_AUDIO_INTEGRATION
+android { defaultConfig { testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' } }
+dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
+`);
+
+// Discard only Capacitor's generated package-name example, replaced by the real integration suite.
+for(const pkg of ['myapp','app']){const example=path.join(android,'app/src/androidTest/java/com/getcapacitor',pkg,'ExampleInstrumentedTest.java');if(fs.existsSync(example))fs.rmSync(example);}
