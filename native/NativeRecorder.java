@@ -260,7 +260,7 @@ public final class NativeRecorder implements Runnable {
                     if(normalSince==0)normalSince=mono;
                     if(mono-normalSince<1500||mono<retryAt){Thread.sleep(250);continue;}
                 }
-                if(input==null){resumedPending=sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;}
+                if(input==null){resumedPending=resumedPending||sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;}
                 int n=0;
                 long readDeadline=SystemClock.elapsedRealtime()+3000;
                 while(n<FRAME&&!stop){
@@ -278,7 +278,7 @@ public final class NativeRecorder implements Runnable {
                         if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
                     checkRoute();interrupted=false;inputRetries=0;interruptionReason="";error="";
                     service.wakeNative();
-                    if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;}
+                    if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;resumedPending=false;}
                 }
                 if(resumedPending){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","휴식 시간이 끝나 마이크 입력을 확인했습니다");resumedPending=false;}
                 splitIfDue(System.currentTimeMillis());ensureFile();
