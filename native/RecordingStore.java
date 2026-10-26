@@ -30,13 +30,18 @@ final class RecordingStore {
             }catch(Exception unavailable){ /* retain metadata until absence can be confirmed */ }
             if(!missing)kept.put(row);
         }
-        if(kept.length()!=all.length())save(c,kept);
+        if(kept.length()!=all.length()){save(c,kept);version++;}
         return kept;
     }
     private static void save(Context c,JSONArray a)throws Exception{
         AtomicFile f=file(c);FileOutputStream out=null;
         try{out=f.startWrite();out.write(a.toString().getBytes(StandardCharsets.UTF_8));f.finishWrite(out);}
         catch(Exception e){if(out!=null)f.failWrite(out);throw e;}
+    }
+    static synchronized void replace(Context c,java.util.Set<String> sourceUris,JSONObject output)throws Exception{
+        JSONArray next=new JSONArray();JSONArray all=raw(c);boolean present=false;
+        for(int i=0;i<all.length();i++){JSONObject row=all.getJSONObject(i);if(sourceUris.contains(row.optString("uri")))continue;if(output.optString("uri").equals(row.optString("uri")))present=true;next.put(row);}
+        if(!present)next.put(output);save(c,next);version++;
     }
     static synchronized void add(Context c,String n,String uri,long size,long ms,boolean recovered,long created)throws Exception{
         JSONArray a=raw(c);

@@ -23,7 +23,7 @@ import androidx.core.content.ContextCompat;
 
 /**
  * 마이크 타입 포그라운드 서비스.
- * - 녹음 중: PARTIAL_WAKE_LOCK 유지 → 화면이 꺼져도 CPU·WebView(JS, Web Worker, 오디오)가 계속 동작
+ * - 녹음 중: PARTIAL_WAKE_LOCK 유지 → 화면이 꺼져도 CPU와 네이티브 오디오 스레드가 동작
  * - 취침 중(ACTION_SLEEP): 웨이크락 반납 → 기기가 Doze로 깊은 절전, 기상 시각에 알람으로 웨이크락 재획득
  * - Android 14+ 백그라운드 마이크 차단을 피하려면 앱이 화면에 보일 때 최초 시작해야 함
  */
@@ -37,7 +37,6 @@ public class BlackboxService extends Service {
     public static final String DEFAULT_TEXT = "일상에 귀기울이고 있습니다";
     private NativeRecorder recorder;
     public static volatile String lastError = "";
-    public static volatile Runnable stopListener;   // 플러그인이 등록: 알림의 '녹음 중지' → JS 로 전달
     private static final String ACTION_ALARM = "com.lifeblackbox.recorder.WAKE_ALARM";
     public static final int NOTI_ID = 1001;
     public static volatile boolean running = false;
@@ -46,7 +45,7 @@ public class BlackboxService extends Service {
     private final BroadcastReceiver alarmReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            acquireWakeLock();   // CPU를 깨워 WebView의 1초 타이머가 기상 처리(마이크 재획득)를 하게 함
+            acquireWakeLock();   // CPU를 깨워 네이티브 녹음 루프가 마이크를 다시 확보하게 함
             // Recorder confirms actual microphone input before announcing resumption.
         }
     };

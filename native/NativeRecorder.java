@@ -20,7 +20,7 @@ public final class NativeRecorder implements Runnable {
     private volatile JSONObject cfg;
     private volatile AudioRecord input;
     private Thread thread;
-    private final java.util.concurrent.ExecutorService publisher=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.ExecutorService publisher=java.util.concurrent.Executors.newSingleThreadExecutor(task->new Thread(()->{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);task.run();},"Recording-Publisher"));
     private MediaCodec codec;
     private FileOutputStream out, timeline;
     private TimelineSegments spans;
@@ -55,6 +55,11 @@ public final class NativeRecorder implements Runnable {
     private final float[] levels=new float[48];private int levelAt;
     private volatile String error = "", route = "확인 중";
     private int above;
+    private long modeChecked=-1000, routeChecked;
+    private boolean cachedCall;
+    private boolean callActiveCached(){long now=SystemClock.elapsedRealtime();if(now-modeChecked>=200||now<modeChecked){cachedCall=callActive();modeChecked=now;}return cachedCall;}
+    private final short[][] preRoll=new short[12][FRAME];
+    private int preRollAt;
     private static final int RATE = 16000, FRAME = 800;
     private final ArrayDeque<short[]> ring = new ArrayDeque<>();
     private static final class ExportRequest {
@@ -77,7 +82,7 @@ public final class NativeRecorder implements Runnable {
         publisher.submit(()->{try{
             File[] pending=new File(ctx.getFilesDir(),"pending").listFiles((d,n)->n.endsWith(".aac"));
             if(pending!=null)for(File f:pending)if((current==null||!f.equals(current))&&f.length()>0)throw new IOException("저장이 끝나지 않은 녹음이 있습니다. 저장 오류를 확인해 주세요");
-            JSONObject result=ExportSnapshot.create(ctx,request.date,cutoff,RecordingStore.list(ctx));request.result.complete(result);
+            WindowMerger.reconcile(ctx);JSONObject result=ExportSnapshot.create(ctx,request.date,cutoff,RecordingStore.list(ctx));request.result.complete(result);
         }catch(Exception e){request.result.completeExceptionally(e);}finally{activeExport=null;}});
     }
     private void sleepReminderBarrier(long cutoff){
@@ -89,7 +94,7 @@ public final class NativeRecorder implements Runnable {
             if(pending!=null)for(File f:pending)if(f.length()>0)return;
             android.content.SharedPreferences p=ctx.getSharedPreferences("recorder-settings",0);
             if(!p.getBoolean("reminderOn",false)||!p.getBoolean("sleepOn",false))return;
-            String date=reminderDate;JSONObject snapshot=ExportSnapshot.create(ctx,date,cutoff,RecordingStore.list(ctx));ExportReminder.afterSaved(ctx,snapshot);
+            String date=reminderDate;WindowMerger.reconcile(ctx);JSONObject snapshot=ExportSnapshot.create(ctx,date,cutoff,RecordingStore.list(ctx));ExportReminder.afterSaved(ctx,snapshot);
         }catch(Exception e){android.util.Log.e("LifeRecorder","Reminder preparation failed",e);}finally{if(saveLock.isHeld())saveLock.release();}});
     }
     NativeRecorder(BlackboxService s, JSONObject config) { service=s; ctx=s.getApplicationContext(); cfg=validated(config); }
@@ -98,8 +103,7 @@ public final class NativeRecorder implements Runnable {
     private static JSONObject validated(JSONObject source) {
         try {
             JSONObject c=new JSONObject(source.toString());
-            int split=c.optInt("splitMin",30);if(split!=1&&split!=15&&split!=30&&split!=60&&split!=90&&split!=120)split=30;
-            c.put("splitMin",split);int rate=c.optInt("bitrate",24000);
+            c.put("splitMin",120);int rate=c.optInt("bitrate",24000);
             if(rate!=16000&&rate!=24000&&rate!=32000&&rate!=48000)rate=24000;c.put("bitrate",rate);
             c.put("threshold",Math.max(-80,Math.min(-10,c.optDouble("threshold",-50))));
             c.put("hangover",Math.max(1,Math.min(30,c.optInt("hangover",3))));
@@ -109,11 +113,12 @@ public final class NativeRecorder implements Runnable {
         }catch(Exception e){return new JSONObject();}
     }
     synchronized void stop() { if(stop)return;service.wakeNative(); stop=true; Thread t=thread; if(t!=null)t.interrupt(); }
-    JSONObject status() {
+    JSONObject status() {return status(true);}
+    JSONObject status(boolean visual) {
         JSONObject o=new JSONObject(); try {
             o.put("sessionStarted",sessionStarted).put("filesVersion",RecordingStore.version).put("running", true).put("stopping",stop).put("sleeping",sleeping).put("voice",voice)
              .put("db",db).put("recMs",samples*1000/RATE).put("totalMs",totalMs+samples*1000/RATE)
-             .put("interrupted",interrupted).put("interruptionReason",interruptionReason).put("restUntil",restUntil).put("levels",visualLevels()).put("threshold",cfg.optDouble("threshold",-50)).put("vadOn",cfg.optBoolean("vadOn",true)).put("nextSplit",nextSplit).put("route",route).put("error",error);
+             .put("maintenance",WindowMerger.lastError).put("merging",WindowMerger.working).put("interrupted",interrupted).put("interruptionReason",interruptionReason).put("restUntil",restUntil).put("levels",visual?visualLevels():new JSONArray()).put("threshold",cfg.optDouble("threshold",-50)).put("vadOn",cfg.optBoolean("vadOn",true)).put("nextSplit",nextSplit).put("route",route).put("error",error);
         } catch(Exception ignored) {} return o;
     }
     private synchronized void level(double value){levels[levelAt]=(float)Math.max(0,Math.min(1,(value+80)/55));levelAt=(levelAt+1)%levels.length;}
@@ -160,11 +165,9 @@ public final class NativeRecorder implements Runnable {
     private void closeInput(){AudioRecord a=input; input=null; if(a!=null){try{a.stop();}catch(Exception ignored){} a.release();}}
     private void beginFile() throws Exception {
         fileStart=System.currentTimeMillis();samples=0;
-        Calendar c=Calendar.getInstance(); int step=cfg.optInt("splitMin",30),m=c.get(Calendar.HOUR_OF_DAY)*60+c.get(Calendar.MINUTE);
-        c.set(Calendar.HOUR_OF_DAY,0);c.set(Calendar.MINUTE,0);c.set(Calendar.SECOND,0);c.set(Calendar.MILLISECOND,0);
-        c.add(Calendar.MINUTE,(m/step+1)*step);nextSplit=c.getTimeInMillis();
+        long window=RecordingWindow.start(fileStart);nextSplit=RecordingWindow.end(fileStart);
         File dir=new File(ctx.getFilesDir(),"pending");dir.mkdirs();
-        journal=new File(dir,"LBB_"+stamp(fileStart,"yyyyMMdd_HHmmss_SSS")+".aac");
+        journal=new File(dir,"LBB_"+stamp(fileStart,"yyyyMMdd_HHmmss_SSS")+"_W"+window+".aac");
         out=new FileOutputStream(journal);
         timeline=new FileOutputStream(journal.getAbsolutePath()+".timeline");spans=new TimelineSegments();
         MediaFormat f=MediaFormat.createAudioFormat("audio/mp4a-latm",RATE,1);
@@ -220,7 +223,7 @@ public final class NativeRecorder implements Runnable {
                 PowerManager pm=(PowerManager)ctx.getSystemService(Context.POWER_SERVICE);
                 PowerManager.WakeLock lock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"LifeRecorder::save");
                 lock.acquire(120000);
-                try{publish(ctx,ready,false);RetentionManager.request(ctx);}catch(Exception e){service.recordError("파일 저장 보류: "+e.getMessage());}
+                try{publish(ctx,ready,false);WindowMerger.reconcile(ctx);RetentionManager.request(ctx);}catch(Exception e){service.recordError("파일 저장 보류: "+e.getMessage());}
                 finally{if(lock.isHeld())lock.release();}
             });
         }
@@ -229,8 +232,9 @@ public final class NativeRecorder implements Runnable {
     @Override public void run(){
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
         try{
-            try { recover(ctx); } catch(Exception e) { service.recordError("일부 이전 파일 복구 보류: "+e.getMessage()); }
+            try { recover(ctx);WindowMerger.request(ctx); } catch(Exception e) { service.recordError("일부 이전 파일 복구 보류: "+e.getMessage()); }
             boolean resumedPending=false;
+            short[] pcm=new short[FRAME];
             while(!stop){
               try {
                 // Advance clock-aligned windows even if a call spans a split boundary.
@@ -239,7 +243,7 @@ public final class NativeRecorder implements Runnable {
                 if(request!=null){
                     long cutoff=lastWallEnd>0?lastWallEnd:System.currentTimeMillis();
                     finishFile();ring.clear();ringTimes.clear();
-                    if(!isSleep()&&!interrupted&&!callActive()){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
+                    if(!isSleep()&&!interrupted&&!callActiveCached()){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
                 }
 
                 if(isSleep()){
@@ -247,7 +251,7 @@ public final class NativeRecorder implements Runnable {
                     Thread.sleep(1000);continue;
                 }
                 if(sleeping){sleeping=false;resumedPending=true;service.wakeNative();}
-                if(callActive()){
+                if(callActiveCached()){
                     if(!interrupted||input!=null)suspendInput("통화로 녹음 대기 중");
                     inputRetries=0;normalSince=0;Thread.sleep(500);continue;
                 }
@@ -257,15 +261,15 @@ public final class NativeRecorder implements Runnable {
                     if(mono-normalSince<1500||mono<retryAt){Thread.sleep(250);continue;}
                 }
                 if(input==null){resumedPending=sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;}
-                short[] pcm=new short[FRAME];int n=0;
+                int n=0;
                 long readDeadline=SystemClock.elapsedRealtime()+3000;
                 while(n<FRAME&&!stop){
-                    if(callActive())throw new InputUnavailable("통화 시작");
+                    if(callActiveCached())throw new InputUnavailable("통화 시작");
                     int k;
                     try{k=input.read(pcm,n,FRAME-n,AudioRecord.READ_NON_BLOCKING);}
                     catch(IllegalStateException e){throw new InputUnavailable("마이크 입력 상태 변경");}
                     if(k<0)throw new InputUnavailable("마이크 읽기 오류 "+k);
-                    if(k==0){if(SystemClock.elapsedRealtime()>readDeadline)throw new InputUnavailable("마이크 입력 시간 초과");Thread.sleep(10);}else n+=k;
+                    if(k==0){if(SystemClock.elapsedRealtime()>readDeadline)throw new InputUnavailable("마이크 입력 시간 초과");Thread.sleep(Math.max(5,Math.min(50,(FRAME-n)*1000L/RATE)));}else n+=k;
                 }
                 if(stop)break;
                 if(interrupted){
@@ -284,16 +288,16 @@ public final class NativeRecorder implements Runnable {
                 if(db>cfg.optDouble("threshold",-50)){above++;if(above>=2){lastVoice=now;voice=true;}}else above=0;
                 if(voice&&now-lastVoice>cfg.optInt("hangover",3)*1000L)voice=false;
                 if(!cfg.optBoolean("vadOn",true)||voice){while(!ring.isEmpty())encode(ring.removeFirst(),ringTimes.removeFirst());encode(pcm,frameWall);}
-                else{ring.addLast(pcm);ringTimes.addLast(frameWall);while(ring.size()>12){ring.removeFirst();ringTimes.removeFirst();}}
-                if(now%1000<50){checkRoute();
+                else{while(ring.size()>=12){ring.removeFirst();ringTimes.removeFirst();}short[] saved=preRoll[preRollAt];preRollAt=(preRollAt+1)%preRoll.length;System.arraycopy(pcm,0,saved,0,FRAME);ring.addLast(saved);ringTimes.addLast(frameWall);}
+                if(now-routeChecked>=1000){routeChecked=now;checkRoute();
                     if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
                         if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
                 }
                 if(now-lastSync>=10000)checkpoint();
               } catch(InputUnavailable e){
                 if(stop)break;
-                suspendInput(callActive()?"통화로 녹음 대기 중":"마이크 복구 대기 중");
-                if(!callActive()&&++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
+                suspendInput(callActiveCached()?"통화로 녹음 대기 중":"마이크 복구 대기 중");
+                if(!callActiveCached()&&++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
                 retryAt=SystemClock.elapsedRealtime()+Math.min(10000,1000L*Math.max(1,inputRetries));
               }
             }
@@ -405,9 +409,9 @@ public final class NativeRecorder implements Runnable {
                     if(cursor==null||!cursor.moveToFirst())throw new IOException("저장 파일 확인 실패");
                     name=cursor.getString(0);
                 }
-                RecordingStore.add(c,name,target.uri,tmp.length(),duration,recovered,timestamp);
-                // Daily log must be durable before receipt completion and journal cleanup.
+                // Publish the complete timeline before making the row visible to merge/export.
                 DailyLog.record(c,journal,name,timestamp,duration);
+                RecordingStore.add(c,name,target.uri,tmp.length(),duration,recovered,timestamp);
             }
             public void complete()throws Exception{state.put("done",true);saveState();}
             public void cleanup(){
