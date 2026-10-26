@@ -14,6 +14,8 @@ import static org.junit.Assert.*;
 public class CallInterruptionTest {
     public static class TestService extends BlackboxService {
         volatile boolean waiting,finished,resting;
+        // Test double isolates recorder lifecycle from notification/receiver platform plumbing.
+        @Override public void onCreate(){}
         @Override void waitNative(String text){waiting=true;}
         @Override void wakeNative(){}
         @Override void sleepNative(long at){resting=true;}
