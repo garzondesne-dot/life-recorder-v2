@@ -1,12 +1,12 @@
 import fs from 'node:fs';import path from 'node:path';import {execFileSync} from 'node:child_process';import os from 'node:os';import assert from 'node:assert/strict';
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'life-ui-')),out=path.resolve('android/app/build/reports/ui');fs.mkdirSync(out,{recursive:true});
 const html=fs.readFileSync('www/index.html','utf8');
-const cases=[['home',390,844],['home-small',320,740],['home-wide',840,900],['archive',390,940],['archive-wide',840,900],['settings',390,940],['settings-wide',840,900],['rests',390,940],['prepare',390,940]];
+const cases=[['home',390,844],['home-small',320,740],['home-wide',840,900],['archive',390,940],['archive-priorities',390,940],['archive-wide',840,900],['settings',390,940],['settings-wide',840,900],['rests',390,940],['prepare',390,940]];
 for(const [name,width,height] of cases){const page=name.split('-')[0];
  const fixture=`<script>
 state.all=Array.from({length:11},(_,i)=>({name:'LBB_'+ymd(Date.now()).replaceAll('-','')+'_12000'+i+'.m4a',uri:'content://sample/'+i,size:800000,created:Date.now(),durMs:270000}));
 cfg.restSchedules=[{name:'취침',start:'22:00',end:'07:00',days:[1,2,3,4,5,6,7],enabled:true},{name:'점심 휴식',start:'12:00',end:'13:00',days:[1,2,3,4,5],enabled:true}];settingsUI();
-profile.priorities=['todo','speech'];renderProfile();state.running=true;state.voice=true;state.sessionStart=Date.now()-8316000;state.db=-40;state.levels=Array.from({length:48},(_,i)=>.1+.6*Math.abs(Math.sin(i*.7)));state.snapshot={date:state.date,cutoff:Date.now(),token:'preview',files:state.all};rebuildBatches();show('${page}');renderHome();
+profile.priorities=['todo','speech'];renderProfile();state.running=true;state.voice=true;state.sessionStart=Date.now()-8316000;state.db=-40;state.levels=Array.from({length:48},(_,i)=>.1+.6*Math.abs(Math.sin(i*.7)));state.snapshot={date:state.date,cutoff:Date.now(),token:'preview',files:state.all};rebuildBatches();show('${page}');if('${name}'==='archive-priorities')$('priorityDetails').open=true;renderHome();
 setTimeout(()=>{const main=document.querySelector('main');let bad=main.scrollWidth>main.clientWidth+2;for(const id of ['recBtn','exportBtn','elapsed']){const e=document.getElementById(id);if(!e.closest('[hidden]')){const r=e.getBoundingClientRect();if(r.left<0||r.right>innerWidth+1)bad=true;}}document.body.setAttribute('data-layout-check',bad?'FAIL':'PASS');},50);
 </script>`;
  const file=path.join(dir,name+'.html');fs.writeFileSync(file,html.replace('</body>',fixture+'</body>'));
