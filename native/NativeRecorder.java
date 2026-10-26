@@ -36,7 +36,9 @@ public final class NativeRecorder implements Runnable {
     private int inputRetries;
     private long retryAt, normalSince;
     private static final class InputUnavailable extends IOException {
-        InputUnavailable(String message){super(message);}
+        final boolean busy;
+        InputUnavailable(String message){this(message,false);}
+        InputUnavailable(String message,boolean busy){super(message);this.busy=busy;}
     }
     private boolean callActive(){
         int mode=((AudioManager)ctx.getSystemService(Context.AUDIO_SERVICE)).getMode();
@@ -49,6 +51,11 @@ public final class NativeRecorder implements Runnable {
         closeInput();checkpoint();ring.clear();ringTimes.clear();voice=false;above=0;db=-100;
         interrupted=true;resumeNotice=true;interruptionReason=reason;normalSince=0;
         service.waitNative(reason);
+    }
+    private void deferInputRecovery(InputUnavailable e)throws IOException{
+        if(callActiveCached()||e.busy){inputRetries=0;retryAt=SystemClock.elapsedRealtime()+5000;return;}
+        if(++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
+        retryAt=SystemClock.elapsedRealtime()+Math.min(10000,1000L*inputRetries);
     }
     private volatile long restUntil, restCacheAt;
     private volatile long[] restRange=new long[]{0,0};
@@ -275,7 +282,7 @@ public final class NativeRecorder implements Runnable {
                 if(interrupted){
                     // A successful read plus an unsilenced, built-in route confirms recovery.
                     if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
-                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
+                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다",true);}
                     checkRoute();interrupted=false;inputRetries=0;interruptionReason="";error="";
                     service.wakeNative();
                     if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;resumedPending=false;}
@@ -291,14 +298,13 @@ public final class NativeRecorder implements Runnable {
                 else{while(ring.size()>=12){ring.removeFirst();ringTimes.removeFirst();}short[] saved=preRoll[preRollAt];preRollAt=(preRollAt+1)%preRoll.length;System.arraycopy(pcm,0,saved,0,FRAME);ring.addLast(saved);ringTimes.addLast(frameWall);}
                 if(now-routeChecked>=1000){routeChecked=now;checkRoute();
                     if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
-                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
+                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다",true);}
                 }
                 if(now-lastSync>=10000)checkpoint();
               } catch(InputUnavailable e){
                 if(stop)break;
                 suspendInput(callActiveCached()?"통화로 녹음 대기 중":"마이크 복구 대기 중");
-                if(!callActiveCached()&&++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
-                retryAt=SystemClock.elapsedRealtime()+Math.min(10000,1000L*Math.max(1,inputRetries));
+                deferInputRecovery(e);
               }
             }
         }catch(InterruptedException ignored){}catch(Exception e){error=e.getMessage();service.recordError(error);RestNotifications.send(ctx,"녹음을 계속하지 못했습니다",error==null?"앱을 열어 확인해 주세요":error);}
