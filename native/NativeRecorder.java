@@ -97,7 +97,7 @@ public final class NativeRecorder implements Runnable {
         } catch(Exception ignored) {} return o;
     }
     private synchronized void level(double value){levels[levelAt]=(float)Math.max(0,Math.min(1,(value+80)/55));levelAt=(levelAt+1)%levels.length;}
-    private synchronized JSONArray visualLevels(){JSONArray a=new JSONArray();for(int n=0;n<levels.length;n++)a.put((double)levels[(levelAt+n)%levels.length]);return a;}
+    private synchronized JSONArray visualLevels() throws JSONException{JSONArray a=new JSONArray();for(int n=0;n<levels.length;n++)a.put((double)levels[(levelAt+n)%levels.length]);return a;}
     private String stamp(long t,String f) {return new SimpleDateFormat(f,Locale.US).format(new Date(t));}
     private int minute(String s) {String[] a=s.split(":"); return Integer.parseInt(a[0])*60+Integer.parseInt(a[1]);}
     private long[] restNow(){
