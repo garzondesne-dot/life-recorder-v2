@@ -100,6 +100,7 @@ public class BlackboxService extends Service {
 
     void sleepNative(long at) { scheduleWake(at); notifyText("녹음 휴식 중 · 예약 시간에 재개"); releaseWakeLock(); }
     void wakeNative() { cancelWake(); acquireWakeLock(); notifyText(DEFAULT_TEXT); }
+    void waitNative(String text) { cancelWake(); acquireWakeLock(); notifyText(text); }
     void recordError(String error) { lastError=error; notifyText("녹음 오류: " + error); }
     void recordingFinished() { new Handler(Looper.getMainLooper()).post(this::stopSelf); }
 

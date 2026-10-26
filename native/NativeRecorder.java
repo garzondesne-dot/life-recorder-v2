@@ -30,7 +30,25 @@ public final class NativeRecorder implements Runnable {
     private volatile long samples, fileStart, nextSplit, lastVoice, totalMs;
     private long lastSync;
     private volatile double db = -100;
-    private volatile boolean sleeping, voice;
+    private volatile boolean sleeping, voice, interrupted;
+    private volatile String interruptionReason="";
+    private boolean resumeNotice;
+    private int inputRetries;
+    private long retryAt, normalSince;
+    private static final class InputUnavailable extends IOException {
+        InputUnavailable(String message){super(message);}
+    }
+    private boolean callActive(){
+        int mode=((AudioManager)ctx.getSystemService(Context.AUDIO_SERVICE)).getMode();
+        return mode==AudioManager.MODE_IN_CALL||mode==AudioManager.MODE_IN_COMMUNICATION
+            ||mode==AudioManager.MODE_RINGTONE||mode==5||mode==6;
+    }
+    private void suspendInput(String reason) throws Exception {
+        // Finalize only on the audio thread; preserve the foreground session and wake lock.
+        closeInput();finishFile();ring.clear();ringTimes.clear();voice=false;above=0;db=-100;
+        interrupted=true;resumeNotice=true;interruptionReason=reason;normalSince=0;
+        service.waitNative(reason);
+    }
     private volatile long restUntil, restCacheAt;
     private volatile long[] restRange=new long[]{0,0};
     private final float[] levels=new float[48];private int levelAt;
@@ -48,9 +66,9 @@ public final class NativeRecorder implements Runnable {
     private final long sessionStarted=System.currentTimeMillis();
     synchronized java.util.concurrent.CompletableFuture<JSONObject> prepareExport(String date){
         ExportRequest request=new ExportRequest(date);
-        if(stop||activeExport!=null||(!sleeping&&input==null)){request.result.completeExceptionally(new IOException("녹음 초기화·종료 또는 내보내기 준비 중입니다. 잠시 후 다시 시도해 주세요"));return request.result;}
+        if(stop||activeExport!=null||(!sleeping&&!interrupted&&input==null)){request.result.completeExceptionally(new IOException("녹음 초기화·종료 또는 내보내기 준비 중입니다. 잠시 후 다시 시도해 주세요"));return request.result;}
         activeExport=request;
-        if(sleeping)queueSnapshot(request,System.currentTimeMillis(),null);else exportRequest.set(request);
+        if(sleeping||interrupted)queueSnapshot(request,System.currentTimeMillis(),null);else exportRequest.set(request);
         return request.result;
     }
     private void queueSnapshot(ExportRequest request,long cutoff,File current){
@@ -93,7 +111,7 @@ public final class NativeRecorder implements Runnable {
         JSONObject o=new JSONObject(); try {
             o.put("sessionStarted",sessionStarted).put("filesVersion",RecordingStore.version).put("running", true).put("stopping",stop).put("sleeping",sleeping).put("voice",voice)
              .put("db",db).put("recMs",samples*1000/RATE).put("totalMs",totalMs+samples*1000/RATE)
-             .put("restUntil",restUntil).put("levels",visualLevels()).put("threshold",cfg.optDouble("threshold",-50)).put("vadOn",cfg.optBoolean("vadOn",true)).put("nextSplit",nextSplit).put("route",route).put("error",error);
+             .put("interrupted",interrupted).put("interruptionReason",interruptionReason).put("restUntil",restUntil).put("levels",visualLevels()).put("threshold",cfg.optDouble("threshold",-50)).put("vadOn",cfg.optBoolean("vadOn",true)).put("nextSplit",nextSplit).put("route",route).put("error",error);
         } catch(Exception ignored) {} return o;
     }
     private synchronized void level(double value){levels[levelAt]=(float)Math.max(0,Math.min(1,(value+80)/55));levelAt=(levelAt+1)%levels.length;}
@@ -109,28 +127,33 @@ public final class NativeRecorder implements Runnable {
     private boolean isSleep(){return restNow()[1]>0;}
     private long wakeAt(){return restNow()[1];}
     private void openInput() throws Exception {
+        try { openInputInternal(); }
+        catch(SecurityException e){throw e;}
+        catch(IllegalArgumentException|IllegalStateException e){throw new InputUnavailable("마이크 초기화 오류: "+e.getMessage());}
+    }
+    private void openInputInternal() throws Exception {
         if(androidx.core.content.ContextCompat.checkSelfPermission(ctx,android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED)throw new SecurityException("마이크 권한이 필요합니다");
         int min=AudioRecord.getMinBufferSize(RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
         input=new AudioRecord(MediaRecorder.AudioSource.MIC,RATE,AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,Math.max(min,FRAME*8));
-        if(input.getState()!=AudioRecord.STATE_INITIALIZED)throw new IOException("마이크 초기화 실패");
+        if(input.getState()!=AudioRecord.STATE_INITIALIZED)throw new InputUnavailable("마이크 초기화 실패");
         AudioManager am=(AudioManager)ctx.getSystemService(Context.AUDIO_SERVICE);
         AudioDeviceInfo built=null;
         for(AudioDeviceInfo d:am.getDevices(AudioManager.GET_DEVICES_INPUTS))
             if(d.getType()==AudioDeviceInfo.TYPE_BUILTIN_MIC){built=d;break;}
-        if(built==null || !input.setPreferredDevice(built))throw new IOException("내장 마이크 선택 실패");
+        if(built==null || !input.setPreferredDevice(built))throw new InputUnavailable("내장 마이크 선택 실패");
         // Do not change global audio mode, SCO, speakerphone or audio focus.
         input.startRecording();
         clockWall=System.currentTimeMillis();clockMono=SystemClock.elapsedRealtime();
-        if(input.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IOException("마이크 시작 실패");
+        if(input.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new InputUnavailable("마이크 시작 실패");
         checkRoute();
     }
     private void checkRoute() throws IOException {
         AudioDeviceInfo d=input.getRoutedDevice();
         if(d==null){route="내장 마이크 요청 중";return;}
         route=d.getType()==AudioDeviceInfo.TYPE_BUILTIN_MIC?"휴대폰 내장 마이크":"다른 입력: "+d.getType();
-        if(d.getType()!=AudioDeviceInfo.TYPE_BUILTIN_MIC)throw new IOException("내장 마이크 경로가 해제되어 녹음을 중지했습니다");
+        if(d.getType()!=AudioDeviceInfo.TYPE_BUILTIN_MIC)throw new InputUnavailable("내장 마이크 경로 변경");
     }
     private void closeInput(){AudioRecord a=input; input=null; if(a!=null){try{a.stop();}catch(Exception ignored){} a.release();}}
     private void beginFile() throws Exception {
@@ -194,21 +217,48 @@ public final class NativeRecorder implements Runnable {
             try { recover(ctx); } catch(Exception e) { service.recordError("일부 이전 파일 복구 보류: "+e.getMessage()); }
             boolean resumedPending=false;
             while(!stop){
+              try {
                 ExportRequest request=exportRequest.getAndSet(null);
                 if(request!=null){
                     long cutoff=lastWallEnd>0?lastWallEnd:System.currentTimeMillis();
                     finishFile();ring.clear();ringTimes.clear();
-                    if(!isSleep()){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
+                    if(!isSleep()&&!interrupted){beginFile();queueSnapshot(request,cutoff,journal);}else queueSnapshot(request,cutoff,null);
                 }
 
                 if(isSleep()){
                     if(!sleeping){long cutoff=System.currentTimeMillis();finishFile();sleepReminderBarrier(cutoff);closeInput();ring.clear();ringTimes.clear();voice=false;sleeping=true;service.sleepNative(wakeAt());RestNotifications.send(ctx,"녹음을 잠시 쉽니다",stamp(wakeAt(),"M월 d일 HH:mm")+" 재개 예정");}
                     Thread.sleep(1000);continue;
                 }
+                if(sleeping){sleeping=false;resumedPending=true;service.wakeNative();}
+                if(callActive()){
+                    if(!interrupted||input!=null)suspendInput("통화로 녹음 대기 중");
+                    inputRetries=0;normalSince=0;Thread.sleep(500);continue;
+                }
+                if(interrupted){
+                    long mono=SystemClock.elapsedRealtime();
+                    if(normalSince==0)normalSince=mono;
+                    if(mono-normalSince<1500||mono<retryAt){Thread.sleep(250);continue;}
+                }
                 if(input==null){resumedPending=sleeping;service.wakeNative();sleeping=false;openInput();ring.clear();ringTimes.clear();voice=false;above=0;beginFile();}
                 short[] pcm=new short[FRAME];int n=0;
-                while(n<FRAME&&!stop){int k=input.read(pcm,n,FRAME-n,AudioRecord.READ_BLOCKING);if(k<=0)throw new IOException("마이크 읽기 오류 "+k);n+=k;}
+                long readDeadline=SystemClock.elapsedRealtime()+3000;
+                while(n<FRAME&&!stop){
+                    if(callActive())throw new InputUnavailable("통화 시작");
+                    int k;
+                    try{k=input.read(pcm,n,FRAME-n,AudioRecord.READ_NON_BLOCKING);}
+                    catch(IllegalStateException e){throw new InputUnavailable("마이크 입력 상태 변경");}
+                    if(k<0)throw new InputUnavailable("마이크 읽기 오류 "+k);
+                    if(k==0){if(SystemClock.elapsedRealtime()>readDeadline)throw new InputUnavailable("마이크 입력 시간 초과");Thread.sleep(10);}else n+=k;
+                }
                 if(stop)break;
+                if(interrupted){
+                    // A successful read plus an unsilenced, built-in route confirms recovery.
+                    if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
+                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
+                    checkRoute();interrupted=false;inputRetries=0;interruptionReason="";error="";
+                    service.wakeNative();
+                    if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;}
+                }
                 if(resumedPending){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","휴식 시간이 끝나 마이크 입력을 확인했습니다");resumedPending=false;}
                 double sum=0;for(short x:pcm){double v=x/32768.0;sum+=v*v;}db=sum>0?10*Math.log10(sum/FRAME):-100;level(db);
                 long now=System.currentTimeMillis();
@@ -218,8 +268,17 @@ public final class NativeRecorder implements Runnable {
                 if(!cfg.optBoolean("vadOn",true)||voice){while(!ring.isEmpty())encode(ring.removeFirst(),ringTimes.removeFirst());encode(pcm,frameWall);}
                 else{ring.addLast(pcm);ringTimes.addLast(frameWall);while(ring.size()>12){ring.removeFirst();ringTimes.removeFirst();}}
                 if(now>=nextSplit){finishFile();beginFile();}
-                if(now%1000<50)checkRoute();
+                if(now%1000<50){checkRoute();
+                    if(android.os.Build.VERSION.SDK_INT>=29){AudioRecordingConfiguration c=input.getActiveRecordingConfiguration();
+                        if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다");}
+                }
                 if(now-lastSync>=10000){out.getFD().sync();timeline.write(spans.flush().getBytes(java.nio.charset.StandardCharsets.UTF_8));timeline.getFD().sync();lastSync=now;}
+              } catch(InputUnavailable e){
+                if(stop)break;
+                suspendInput(callActive()?"통화로 녹음 대기 중":"마이크 복구 대기 중");
+                if(!callActive()&&++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
+                retryAt=SystemClock.elapsedRealtime()+Math.min(10000,1000L*Math.max(1,inputRetries));
+              }
             }
         }catch(InterruptedException ignored){}catch(Exception e){error=e.getMessage();service.recordError(error);RestNotifications.send(ctx,"녹음을 계속하지 못했습니다",error==null?"앱을 열어 확인해 주세요":error);}
         finally{try{finishFile();}catch(Exception e){error=e.getMessage();service.recordError(error);}closeInput();

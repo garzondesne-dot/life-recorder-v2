@@ -92,7 +92,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 8').replace(/versionName "[^"]*"/, 'versionName "2.4.2"');
+g = g.replace(/versionCode \d+/, 'versionCode 9').replace(/versionName "[^"]*"/, 'versionName "2.4.3"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
