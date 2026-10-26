@@ -140,3 +140,17 @@ if(fs.existsSync(stylesFile)){
   if(!styles.includes('name="windowSplashScreenBackground"')) styles=styles.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/,'$1<item name="windowSplashScreenBackground">@android:color/black</item>');
   fs.writeFileSync(stylesFile,styles);
 }
+
+// Real AAC/MediaStore integration runs only in the disposable CI emulator.
+const instrumentDir=path.join(android,'app/src/androidTest/java/com/lifeblackbox/recorder');
+fs.mkdirSync(instrumentDir,{recursive:true});
+const instrument=path.join(root,'tests/instrumentation');
+if(fs.existsSync(instrument))fs.cpSync(instrument,instrumentDir,{recursive:true});
+if(!g.includes('LIFE_AUDIO_INTEGRATION'))fs.appendFileSync(gradleFile, `
+// LIFE_AUDIO_INTEGRATION
+android { defaultConfig { testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' } }
+dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
+`);
