@@ -154,3 +154,6 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
 `);
+
+// Discard only Capacitor's generated package-name example, replaced by the real integration suite.
+for(const pkg of ['myapp','app']){const example=path.join(android,'app/src/androidTest/java/com/getcapacitor',pkg,'ExampleInstrumentedTest.java');if(fs.existsSync(example))fs.rmSync(example);}
