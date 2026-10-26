@@ -37,3 +37,11 @@ now=6000;rec.dispatch('pointerdown');now=7000;const completion=[...timers.values
 await run('poll()');run('setStopProgress(.5)');assert.equal(elements.get('stopHoldArc').style.strokeDashoffset,'100','idle button must never show stop progress');console.log('Stop hold ring / 500ms midpoint / leave cancellation / one-second stop once / idle reset: PASS');
 
 for(const id of ['recBtn','exportBtn']){let prevented=false;elements.get(id).dispatch('contextmenu',{preventDefault(){prevented=true;}});assert.equal(prevented,true,'hold control must suppress native long-press menu');}console.log('Native long-press context menu suppressed on hold buttons: PASS');
+
+run("Object.assign(state,{running:true,sleeping:false,interrupted:true,interruptionReason:'통화로 녹음 대기 중'});renderHome()");
+assert.equal(elements.get('recStatus').textContent,'● 통화로 녹음 대기 중');
+assert.equal(elements.get('db').textContent,'— dB');
+assert.equal(elements.get('recBtn').disabled,false,'manual stop remains available during calls');
+run("Object.assign(state,{sleeping:true});renderHome()");
+assert.ok(elements.get('recStatus').textContent.includes('녹음 휴식 중'),'scheduled rest takes UI priority');
+console.log('Call wait status / manual stop availability / scheduled rest priority: PASS');
