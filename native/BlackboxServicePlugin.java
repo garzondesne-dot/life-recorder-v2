@@ -109,20 +109,22 @@ public class BlackboxServicePlugin extends Plugin {
     }
     @PluginMethod public void openRecording(PluginCall call) {
         try {
-            String uri=call.getString("uri");boolean known=false;
-            org.json.JSONArray files=RecordingStore.list(getContext());
-            for(int n=0;n<files.length();n++)if(files.getJSONObject(n).optString("uri").equals(uri))known=true;
-            if(!known)throw new Exception("파일을 찾을 수 없습니다");
+            String uri=call.getString("uri");
+            synchronized(ExportSnapshot.class){boolean known=false;org.json.JSONArray files=RecordingStore.list(getContext());
+                for(int n=0;n<files.length();n++)if(files.getJSONObject(n).optString("uri").equals(uri))known=true;
+                if(!known)throw new Exception("파일을 찾을 수 없습니다");ExportSnapshot.protectUri(getContext(),uri);
+            }
             Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri),"audio/mp4");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);getActivity().startActivity(i);call.resolve();
         }catch(Exception e){call.reject("재생 앱을 열지 못했습니다: "+e.getMessage());}
     }
     @PluginMethod public void shareRecording(PluginCall call) {
         try {
-            String uri=call.getString("uri");boolean known=false;
-            org.json.JSONArray files=RecordingStore.list(getContext());
-            for(int n=0;n<files.length();n++)if(files.getJSONObject(n).optString("uri").equals(uri))known=true;
-            if(!known)throw new Exception("파일을 찾을 수 없습니다");
+            String uri=call.getString("uri");
+            synchronized(ExportSnapshot.class){boolean known=false;org.json.JSONArray files=RecordingStore.list(getContext());
+                for(int n=0;n<files.length();n++)if(files.getJSONObject(n).optString("uri").equals(uri))known=true;
+                if(!known)throw new Exception("파일을 찾을 수 없습니다");ExportSnapshot.protectUri(getContext(),uri);
+            }
             Intent i=new Intent(Intent.ACTION_SEND).setType("audio/mp4").putExtra(Intent.EXTRA_STREAM,Uri.parse(uri));
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);getActivity().startActivity(Intent.createChooser(i,"녹음 파일 내보내기"));call.resolve();
         }catch(Exception e){call.reject(e.getMessage());}
