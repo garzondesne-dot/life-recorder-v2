@@ -47,7 +47,7 @@ public class BlackboxService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             acquireWakeLock();   // CPU를 깨워 WebView의 1초 타이머가 기상 처리(마이크 재획득)를 하게 함
-            notifyText(DEFAULT_TEXT);
+            // Recorder confirms actual microphone input before announcing resumption.
         }
     };
 
@@ -90,7 +90,7 @@ public class BlackboxService extends Service {
         if (intent != null && intent.hasExtra("config")) {
             try {
                 org.json.JSONObject config = new org.json.JSONObject(intent.getStringExtra("config"));
-                if (recorder == null) { lastError=""; recorder = new NativeRecorder(this, config); recorder.start(); }
+                if (recorder == null) { RetentionManager.request(this); lastError=""; recorder = new NativeRecorder(this, config); recorder.start(); }
                 else recorder.configure(config);
             } catch (Exception e) { recordError(e.getMessage()); stopSelf(); }
         }
@@ -98,7 +98,7 @@ public class BlackboxService extends Service {
         return START_NOT_STICKY;      // OS에 의한 프로세스 종료/강제 중지는 자동 재시작하지 않음
     }
 
-    void sleepNative(long at) { scheduleWake(at); notifyText("취침 중 · 예약 시간에 재개"); releaseWakeLock(); }
+    void sleepNative(long at) { scheduleWake(at); notifyText("녹음 휴식 중 · 예약 시간에 재개"); releaseWakeLock(); }
     void wakeNative() { cancelWake(); acquireWakeLock(); notifyText(DEFAULT_TEXT); }
     void recordError(String error) { lastError=error; notifyText("녹음 오류: " + error); }
     void recordingFinished() { new Handler(Looper.getMainLooper()).post(this::stopSelf); }

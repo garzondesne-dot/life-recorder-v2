@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -92,7 +92,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 5').replace(/versionName "[^"]*"/, 'versionName "2.3.0"');
+g = g.replace(/versionCode \d+/, 'versionCode 6').replace(/versionName "[^"]*"/, 'versionName "2.4.0"');
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {

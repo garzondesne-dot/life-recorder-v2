@@ -16,7 +16,7 @@ try {
   assert.ok(manifest.includes('stopWithTask="false"'));assert.equal((manifest.match(/android.permission.RECORD_AUDIO/g)||[]).length,1);
   const gradle=fs.readFileSync(path.join(tmp,'android/app/build.gradle'),'utf8');
   assert.equal((gradle.match(/play-services-auth:/g)||[]).length,0);assert.equal((gradle.match(/LIFE_FIXED_SIGNING/g)||[]).length,1);
-  assert.ok(gradle.includes('versionCode 5'));
+  assert.ok(gradle.includes('versionCode 6'));
   for(const f of ['NativeRecorder.java','RecordingExportPlugin.java','RecordingStore.java'])assert.ok(fs.existsSync(path.join(main,'java/com/lifeblackbox/recorder',f)));
   assert.equal((manifest.match(/com.google.android.apps.bard/g)||[]).length,1);
   assert.ok(!gradle.includes('androidx.work:work-runtime'));

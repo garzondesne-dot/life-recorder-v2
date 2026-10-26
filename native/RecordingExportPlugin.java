@@ -95,7 +95,7 @@ public class RecordingExportPlugin extends Plugin {
             send.setClipData(clip);send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             String pkg="chatgpt".equals(ai)?"com.openai.chatgpt":"claude".equals(ai)?"com.anthropic.claude":GEMINI;
             Intent target=new Intent(send).setPackage(pkg);
-            boolean direct=target.resolveActivity(getContext().getPackageManager())!=null;
+            boolean direct=!"share".equals(ai)&&target.resolveActivity(getContext().getPackageManager())!=null;
             getActivity().runOnUiThread(()->{try{
                 if(direct)getActivity().startActivity(target);
                 else getActivity().startActivity(Intent.createChooser(send,"AI 분석 자료를 받을 앱 선택"));

@@ -77,6 +77,15 @@ final class DailyLog {
             }}
         }
     }
+    static synchronized void removeNames(Context c,Set<String> removed)throws Exception{
+        File[] files=new File(c.getFilesDir(),"daily-timeline").listFiles((d,n)->n.endsWith(".json"));if(files==null)return;
+        for(File f:files){String date=f.getName().replace(".json","");JSONObject all=read(c,date);List<String> keys=new ArrayList<>();Iterator<String> it=all.keys();while(it.hasNext()){String key=it.next();if(removed.contains(all.getJSONObject(key).optString("name")))keys.add(key);}if(keys.isEmpty())continue;
+            for(String key:keys)all.remove(key);
+            if(all.length()>0){write(manifest(c,date),all);publish(c,date);}else{
+                ContentResolver cr=c.getContentResolver();cr.delete(MediaStore.Files.getContentUri("external"),"_display_name=? AND relative_path=? AND owner_package_name=?",new String[]{"LifeRecorder_"+date+"_timelog.txt","Documents/LifeRecorder/"+date+"/",c.getPackageName()});manifest(c,date).delete();
+            }
+        }
+    }
     static synchronized long[] bounds(Context c,String name)throws Exception{
         long from=Long.MAX_VALUE,to=0;JSONArray days=datesFor(c,name);
         for(int i=0;i<days.length();i++){JSONObject all=read(c,days.getString(i));Iterator<String> keys=all.keys();while(keys.hasNext()){
