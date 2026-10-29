@@ -230,7 +230,7 @@ public final class NativeRecorder implements Runnable {
                 PowerManager pm=(PowerManager)ctx.getSystemService(Context.POWER_SERVICE);
                 PowerManager.WakeLock lock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"LifeRecorder::save");
                 lock.acquire(120000);
-                try{publish(ctx,ready,false);WindowMerger.reconcile(ctx);RetentionManager.request(ctx);}catch(Exception e){service.recordError("파일 저장 보류: "+e.getMessage());}
+                try{publish(ctx,ready,false);WindowMerger.reconcile(ctx);RetentionManager.request(ctx);DriveBackup.request(ctx);}catch(Exception e){service.recordError("파일 저장 보류: "+e.getMessage());}
                 finally{if(lock.isHeld())lock.release();}
             });
         }

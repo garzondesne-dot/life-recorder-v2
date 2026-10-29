@@ -133,7 +133,7 @@ public class BlackboxServicePlugin extends Plugin {
     private void persistSettings(JSObject config){
         try{org.json.JSONArray rests=RestSchedule.normalize(config);getContext().getSharedPreferences("recorder-settings",0).edit().putBoolean("reminderOn",config.optBoolean("reminderOn",false)).putBoolean("sleepOn",rests.length()>0).putBoolean("restNotify",config.optBoolean("restNotify",true)).putInt("retentionDays",config.optInt("retentionDays",0)).apply();}catch(Exception invalid){throw new IllegalArgumentException(invalid.getMessage());}
     }
-    @PluginMethod public void cleanup(PluginCall call){WindowMerger.request(getContext());RetentionManager.request(getContext());call.resolve();}
+    @PluginMethod public void cleanup(PluginCall call){WindowMerger.request(getContext());RetentionManager.request(getContext());DriveBackup.request(getContext());call.resolve();}
     @PluginMethod public void notificationStatus(PluginCall call){JSObject o=new JSObject();o.put("allowed",androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());call.resolve(o);}
     @PluginMethod public void allowNotifications(PluginCall call){
         if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED)requestPermissionForAlias("notifications",call,"afterReminderPermission");

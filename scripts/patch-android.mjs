@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java', 'RecordingWindow.java', 'WindowMerger.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java', 'RecordingWindow.java', 'WindowMerger.java', 'DrivePolicy.java', 'DriveHttp.java', 'DriveBackup.java', 'DriveBackupPlugin.java', 'DriveBackupWorker.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -46,6 +46,8 @@ let m = fs.readFileSync(mf, 'utf8');
 
 const perms = [
   'android.permission.RECORD_AUDIO',
+  'android.permission.INTERNET',
+  'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.MODIFY_AUDIO_SETTINGS',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
@@ -81,6 +83,9 @@ if (!m.includes('com.google.android.apps.bard')) m = m.replace('</manifest>', `
 </manifest>`);
 if(!m.includes('${applicationId}.exports'))m=m.replace('</application>', `<provider android:name=".ExportFileProvider" android:authorities="\${applicationId}.exports" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" /></provider></application>`);
 const xmlDir=path.join(resDst,'xml');fs.mkdirSync(xmlDir,{recursive:true});
+m=m.replace(/android:allowBackup="[^"]*"/g,'android:allowBackup="false"');
+if(!m.includes('android:allowBackup='))m=m.replace('<application','<application android:allowBackup="false"');
+
 fs.writeFileSync(path.join(xmlDir,'export_paths.xml'), '<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="daily_exports" path="exports/" /></paths>');
 fs.writeFileSync(mf, m);
 console.log('[patch] AndroidManifest.xml updated');
@@ -92,7 +97,16 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 11').replace(/versionName "[^"]*"/, 'versionName "2.4.5"');
+g = g.replace(/versionCode \d+/, 'versionCode 12').replace(/versionName "[^"]*"/, 'versionName "2.4.6"');
+// Replace the previous pinned block as well as legacy sync dependencies, idempotently.
+g=g.replace(/\n\/\/ LIFE_DRIVE_BACKUP[\s\S]*?\/\/ END_LIFE_DRIVE_BACKUP\n/g,'\n');
+g+=`\n// LIFE_DRIVE_BACKUP
+dependencies {
+    implementation 'com.google.android.gms:play-services-auth:22.0.0'
+    implementation 'androidx.work:work-runtime:2.10.1'
+}
+// END_LIFE_DRIVE_BACKUP
+`;
 fs.writeFileSync(gradleFile, g);
 
 if (!g.includes('LIFE_FIXED_SIGNING')) {
