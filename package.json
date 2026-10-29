@@ -1,8 +1,8 @@
 {
   "name": "life-blackbox-recorder",
-  "version": "2.4.6",
+  "version": "3.0.0",
   "private": true,
-  "description": "Life Blackbox Recorder - 저전력 일상 대화 녹음기 (Capacitor Android)",
+  "description": "LifeRecorder - 저전력 일상 대화 녹음기 (Capacitor Android)",
   "scripts": {
     "setup:android": "cap add android && node scripts/patch-android.mjs && cap sync android",
     "sync": "node scripts/patch-android.mjs && cap sync android",

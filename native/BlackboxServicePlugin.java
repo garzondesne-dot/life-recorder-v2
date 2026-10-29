@@ -52,6 +52,7 @@ public class BlackboxServicePlugin extends Plugin {
 
     private void launch(PluginCall call) {
         try {
+            if(!getContext().getSharedPreferences("usage-notice",0).getBoolean("accepted",false)){call.reject("먼저 사용 안내를 확인해 주세요");return;}
             Intent i = new Intent(getContext(), BlackboxService.class);
             i.putExtra(BlackboxService.EXTRA_TEXT, call.getString("text", BlackboxService.DEFAULT_TEXT));
             persistSettings(call.getObject("config",new JSObject()));
@@ -65,6 +66,7 @@ public class BlackboxServicePlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
+        RecordingSession.stop(getContext());
         if (BlackboxService.running) getContext().startService(new Intent(getContext(), BlackboxService.class).setAction(BlackboxService.ACTION_STOP));
         call.resolve();
     }
@@ -99,7 +101,7 @@ public class BlackboxServicePlugin extends Plugin {
         } catch(Exception e){call.reject(e.getMessage());}
     }
     @PluginMethod public void configure(PluginCall call) {
-        try{JSObject config=call.getObject("config",new JSObject());persistSettings(config);NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(config);call.resolve();}catch(Exception e){call.reject(e.getMessage());}
+        try{JSObject config=call.getObject("config",new JSObject());persistSettings(config);RecordingSession.configure(getContext(),config);NativeRecorder r=NativeRecorder.instance;if(r!=null)r.configure(config);call.resolve();}catch(Exception e){call.reject(e.getMessage());}
     }
     @PluginMethod public void listRecordings(PluginCall call) {
         new Thread(()->{
@@ -129,6 +131,12 @@ public class BlackboxServicePlugin extends Plugin {
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);getActivity().startActivity(Intent.createChooser(i,"녹음 파일 내보내기"));call.resolve();
         }catch(Exception e){call.reject(e.getMessage());}
     }
+
+    @PluginMethod public void acceptUsage(PluginCall call){if(!getContext().getSharedPreferences("usage-notice",0).edit().putBoolean("accepted",true).putLong("acceptedAt",System.currentTimeMillis()).commit()){call.reject("사용 안내 확인 저장 실패");return;}call.resolve();}
+    @PluginMethod public void scheduleStatus(PluginCall call){try{call.resolve(new JSObject(RecordingSession.status(getContext()).toString()));}catch(Exception e){call.reject("예약 상태 확인 실패");}}
+    @PluginMethod public void allowExactAlarm(PluginCall call){try{if(Build.VERSION.SDK_INT>=31){Intent i=new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getContext().getPackageName()));getActivity().startActivity(i);}call.resolve();}catch(Exception e){call.reject("기기 설정에서 알람 및 리마인더를 허용해 주세요");}}
+    @PluginMethod public void requestMic(PluginCall call){if(getPermissionState("microphone")!=PermissionState.GRANTED)requestPermissionForAlias("microphone",call,"afterGuideMic");else{JSObject o=new JSObject();o.put("allowed",true);call.resolve(o);}}
+    @PermissionCallback private void afterGuideMic(PluginCall call){JSObject o=new JSObject();o.put("allowed",getPermissionState("microphone")==PermissionState.GRANTED);call.resolve(o);}
 
     private void persistSettings(JSObject config){
         try{org.json.JSONArray rests=RestSchedule.normalize(config);getContext().getSharedPreferences("recorder-settings",0).edit().putBoolean("reminderOn",config.optBoolean("reminderOn",false)).putBoolean("sleepOn",rests.length()>0).putBoolean("restNotify",config.optBoolean("restNotify",true)).putInt("retentionDays",config.optInt("retentionDays",0)).apply();}catch(Exception invalid){throw new IllegalArgumentException(invalid.getMessage());}

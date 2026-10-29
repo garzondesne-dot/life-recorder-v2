@@ -53,6 +53,8 @@ public class MainActivity extends BridgeActivity {
             .addOnFailureListener(e->{driveCall=null;drivePlugin=null;call.reject("Google 연결 실패. Google Cloud에서 Drive API와 Android OAuth 패키지명·서명 SHA-1 등록을 확인해 주세요.");});
     }
 
+    @Override public void onResume(){super.onResume();RecordingSession.resumeVisible(this);}
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingExportPlugin.class);

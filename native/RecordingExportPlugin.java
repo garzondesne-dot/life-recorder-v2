@@ -69,10 +69,11 @@ public class RecordingExportPlugin extends Plugin {
                 if(!"claude".equals(ai))try(android.os.ParcelFileDescriptor fd=getContext().getContentResolver().openFileDescriptor(Uri.parse(value),"r")){if(fd==null)throw new Exception("원본 파일을 읽을 수 없습니다");}
                 if(seen.add(value))streams.add(Uri.parse(value));
             }
-            Uri daily=ExportSnapshot.logUri(getContext(),snapshot);
+            String prompt=call.getString("prompt","");
+            Uri daily=ExportSnapshot.logWithPrompt(getContext(),snapshot,prompt);
             if("claude".equals(ai))streams.clear();streams.add(daily);
             Intent send=new Intent(streams.size()==1?Intent.ACTION_SEND:Intent.ACTION_SEND_MULTIPLE).setType(streams.size()==1?"text/plain":"*/*");
-            String prompt=call.getString("prompt","");if(prompt.length()>30000)throw new Exception("분석 지침이 너무 깁니다");send.putExtra(Intent.EXTRA_TEXT,prompt);
+            if(prompt.length()>30000)throw new Exception("분석 지침이 너무 깁니다");send.putExtra(Intent.EXTRA_TEXT,prompt);
             if(streams.size()==1)send.putExtra(Intent.EXTRA_STREAM,streams.get(0));else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM,streams);
             ClipData clip=ClipData.newUri(getContext().getContentResolver(),"녹음 파일",streams.get(0));
             for(int i=1;i<streams.size();i++)clip.addItem(new ClipData.Item(streams.get(i)));
@@ -109,6 +110,7 @@ public class RecordingExportPlugin extends Plugin {
         Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"text/plain").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         getActivity().runOnUiThread(()->{try{getActivity().startActivity(i);call.resolve();}catch(Exception e){call.reject("TXT를 열 앱이 없습니다");}});
     }catch(Exception e){call.reject(e.getMessage());}},"Open-Log").start();}
+    @PluginMethod public void setAnalysisProfile(PluginCall call){try{AnalysisInstructions.save(getContext(),call.getObject("profile",new JSObject()));call.resolve();}catch(Exception e){call.reject("분석 선호 저장 실패");}}
     @PluginMethod public void copyPrompt(PluginCall call) {
         android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setPrimaryClip(ClipData.newPlainText("AI 분석 지침",call.getString("prompt","")));call.resolve();

@@ -42,32 +42,29 @@ public class BlackboxService extends Service {
     public static volatile boolean running = false;
 
     private PowerManager.WakeLock wakeLock;
-    private final BroadcastReceiver alarmReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            acquireWakeLock();   // CPU를 깨워 네이티브 녹음 루프가 마이크를 다시 확보하게 함
-            // Recorder confirms actual microphone input before announcing resumption.
-        }
-    };
+    static volatile BlackboxService live;
+    void alarmWake(){acquireWakeLock();}
 
     @Override
     public void onCreate() {
         super.onCreate();
+        live=this;
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "블랙박스 녹음", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "LifeRecorder 녹음", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("녹음이 진행 중임을 표시합니다");
             ch.setShowBadge(false);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.createNotificationChannel(ch);
         }
-        ContextCompat.registerReceiver(this, alarmReceiver, new IntentFilter(ACTION_ALARM),
-                ContextCompat.RECEIVER_NOT_EXPORTED);
+        // Cancel only the old dynamic-receiver alarm during migration.
+        AlarmManager old=getSystemService(AlarmManager.class);if(old!=null)old.cancel(PendingIntent.getBroadcast(this,1,new Intent(ACTION_ALARM).setPackage(getPackageName()),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE));
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
-        if (ACTION_STOP.equals(action)) {            // 알림의 '녹음 중지' 버튼
+        if (ACTION_STOP.equals(action)) {
+            RecordingSession.stop(this);            // 알림의 '녹음 중지' 버튼
             if (recorder != null) recorder.stop(); else stopSelf();
             return START_NOT_STICKY;
         }
@@ -88,9 +85,9 @@ public class BlackboxService extends Service {
         }
         if (intent != null && intent.hasExtra("config")) {
             try {
-                org.json.JSONObject config = new org.json.JSONObject(intent.getStringExtra("config"));
-                if (recorder == null) { RetentionManager.request(this); lastError=""; recorder = new NativeRecorder(this, config); recorder.start(); }
-                else recorder.configure(config);
+                org.json.JSONObject config = new org.json.JSONObject(intent.getStringExtra("config"));config.put("visibleRecovery",intent.getBooleanExtra("visibleRecovery",false));
+                if (recorder == null) { RecordingSession.begin(this,config);RetentionManager.request(this); lastError=""; recorder = new NativeRecorder(this, config); recorder.start(); }
+                else {RecordingSession.configure(this,config);recorder.configure(config);}
             } catch (Exception e) { recordError(e.getMessage()); stopSelf(); }
         }
         running = true;
@@ -122,19 +119,9 @@ public class BlackboxService extends Service {
         return PendingIntent.getBroadcast(this, 1, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    private void scheduleWake(long at) {
-        AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
-        if (am == null) return;
-        PendingIntent pi = alarmIntent();
-        boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
-        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
-        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);   // 정확 알람 권한이 없으면 수 분 오차 허용
-    }
+    private void scheduleWake(long at) { RecordingSession.schedule(this,at); }
 
-    private void cancelWake() {
-        AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
-        if (am != null) am.cancel(alarmIntent());
-    }
+    private void cancelWake() { RecordingSession.cancel(this); }
 
     private void notifyText(String text) {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -152,7 +139,7 @@ public class BlackboxService extends Service {
         PendingIntent pi = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Life Blackbox")
+                .setContentTitle("LifeRecorder")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_stat_wave)
                 .setContentIntent(pi)
@@ -169,9 +156,8 @@ public class BlackboxService extends Service {
     public void onDestroy() {
         running = false;
         if (recorder != null) recorder.stop();
-        cancelWake();
-        releaseWakeLock();
-        try { unregisterReceiver(alarmReceiver); } catch (Exception ignored) { }
+        if(!RecordingSession.prefs(this).getBoolean("active",false))cancelWake();
+        live=null;releaseWakeLock();
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         super.onDestroy();
     }

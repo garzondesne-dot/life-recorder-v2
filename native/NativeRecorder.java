@@ -57,6 +57,8 @@ public final class NativeRecorder implements Runnable {
         if(++inputRetries>=10)throw new IOException("마이크 자동 재개 실패: "+e.getMessage()+" · 앱에서 다시 시작해 주세요");
         retryAt=SystemClock.elapsedRealtime()+Math.min(10000,1000L*inputRetries);
     }
+    private final Object restSignal=new Object();
+    void wakeForSchedule(){restCacheAt=0;synchronized(restSignal){restSignal.notifyAll();}}
     private volatile long restUntil, restCacheAt;
     private volatile long[] restRange=new long[]{0,0};
     private final float[] levels=new float[48];private int levelAt;
@@ -71,14 +73,16 @@ public final class NativeRecorder implements Runnable {
     private final ArrayDeque<short[]> ring = new ArrayDeque<>();
     private static final class ExportRequest {
         final String date;final java.util.concurrent.CompletableFuture<JSONObject> result=new java.util.concurrent.CompletableFuture<>();
-        ExportRequest(String d){date=d;}
+        final boolean snapshot;ExportRequest(String d,boolean s){date=d;snapshot=s;}
     }
     private final java.util.concurrent.atomic.AtomicReference<ExportRequest> exportRequest=new java.util.concurrent.atomic.AtomicReference<>();
     private volatile ExportRequest activeExport;
     private volatile long lastWallEnd;
     private final long sessionStarted=System.currentTimeMillis();
-    synchronized java.util.concurrent.CompletableFuture<JSONObject> prepareExport(String date){
-        ExportRequest request=new ExportRequest(date);
+    synchronized java.util.concurrent.CompletableFuture<JSONObject> prepareExport(String date){return prepareRequest(date,true);}
+    synchronized java.util.concurrent.CompletableFuture<JSONObject> prepareBackup(){return prepareRequest(DailyLog.day(System.currentTimeMillis()),false);}
+    private java.util.concurrent.CompletableFuture<JSONObject> prepareRequest(String date,boolean snapshot){
+        ExportRequest request=new ExportRequest(date,snapshot);
         if(stop||activeExport!=null||(!sleeping&&!interrupted&&input==null)){request.result.completeExceptionally(new IOException("녹음 초기화·종료 또는 내보내기 준비 중입니다. 잠시 후 다시 시도해 주세요"));return request.result;}
         activeExport=request;
         // Even during a call, finalize the open window on the audio thread before snapshotting.
@@ -89,7 +93,7 @@ public final class NativeRecorder implements Runnable {
         publisher.submit(()->{try{
             File[] pending=new File(ctx.getFilesDir(),"pending").listFiles((d,n)->n.endsWith(".aac"));
             if(pending!=null)for(File f:pending)if((current==null||!f.equals(current))&&f.length()>0)throw new IOException("저장이 끝나지 않은 녹음이 있습니다. 저장 오류를 확인해 주세요");
-            WindowMerger.reconcile(ctx);JSONObject result=ExportSnapshot.create(ctx,request.date,cutoff,RecordingStore.list(ctx));request.result.complete(result);
+            WindowMerger.reconcile(ctx);JSONObject result=request.snapshot?ExportSnapshot.create(ctx,request.date,cutoff,RecordingStore.list(ctx)):new JSONObject().put("cutoff",cutoff);request.result.complete(result);
         }catch(Exception e){request.result.completeExceptionally(e);}finally{activeExport=null;}});
     }
     private void sleepReminderBarrier(long cutoff){
@@ -106,7 +110,7 @@ public final class NativeRecorder implements Runnable {
     }
     NativeRecorder(BlackboxService s, JSONObject config) { service=s; ctx=s.getApplicationContext(); cfg=validated(config); }
     void start() { instance=this; thread=new Thread(this,"LifeRecorder-Audio"); thread.start(); }
-    void configure(JSONObject c) { cfg=validated(c);restCacheAt=0; if(sleeping){if(isSleep())service.sleepNative(wakeAt());else service.wakeNative();} }
+    void configure(JSONObject c) { cfg=validated(c);restCacheAt=0;wakeForSchedule(); if(sleeping){if(isSleep())service.sleepNative(wakeAt());else service.wakeNative();} }
     private static JSONObject validated(JSONObject source) {
         try {
             JSONObject c=new JSONObject(source.toString());
@@ -119,7 +123,7 @@ public final class NativeRecorder implements Runnable {
             return c;
         }catch(Exception e){return new JSONObject();}
     }
-    synchronized void stop() { if(stop)return;service.wakeNative(); stop=true; Thread t=thread; if(t!=null)t.interrupt(); }
+    synchronized void stop() { if(stop)return;service.alarmWake(); stop=true; Thread t=thread; if(t!=null)t.interrupt(); }
     JSONObject status() {return status(true);}
     JSONObject status(boolean visual) {
         JSONObject o=new JSONObject(); try {
@@ -240,7 +244,7 @@ public final class NativeRecorder implements Runnable {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
         try{
             try { recover(ctx);WindowMerger.request(ctx); } catch(Exception e) { service.recordError("일부 이전 파일 복구 보류: "+e.getMessage()); }
-            boolean resumedPending=false;
+            boolean resumedPending=cfg.optBoolean("visibleRecovery",false);
             short[] pcm=new short[FRAME];
             while(!stop){
               try {
@@ -255,7 +259,7 @@ public final class NativeRecorder implements Runnable {
 
                 if(isSleep()){
                     if(!sleeping){long cutoff=System.currentTimeMillis();finishFile();sleepReminderBarrier(cutoff);closeInput();ring.clear();ringTimes.clear();voice=false;sleeping=true;service.sleepNative(wakeAt());RestNotifications.send(ctx,"녹음을 잠시 쉽니다",stamp(wakeAt(),"M월 d일 HH:mm")+" 재개 예정");}
-                    Thread.sleep(1000);continue;
+                    synchronized(restSignal){if(!stop)restSignal.wait(1000);}continue;
                 }
                 if(sleeping){sleeping=false;resumedPending=true;service.wakeNative();}
                 if(callActiveCached()){
@@ -285,9 +289,9 @@ public final class NativeRecorder implements Runnable {
                         if(c!=null&&c.isClientSilenced())throw new InputUnavailable("다른 통화·앱이 마이크를 사용 중입니다",true);}
                     checkRoute();interrupted=false;inputRetries=0;interruptionReason="";error="";
                     service.wakeNative();
-                    if(resumeNotice){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;resumedPending=false;}
+                    if(resumeNotice){if(resumedPending)RecordingSession.resumed(ctx);RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","통화·마이크 대기 후 입력을 확인했습니다");resumeNotice=false;resumedPending=false;}
                 }
-                if(resumedPending){RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","휴식 시간이 끝나 마이크 입력을 확인했습니다");resumedPending=false;}
+                if(resumedPending){RecordingSession.resumed(ctx);RestNotifications.send(ctx,"녹음이 다시 시작되었습니다","휴식 시간이 끝나 마이크 입력을 확인했습니다");resumedPending=false;}
                 splitIfDue(System.currentTimeMillis());ensureFile();
                 double sum=0;for(short x:pcm){double v=x/32768.0;sum+=v*v;}db=sum>0?10*Math.log10(sum/FRAME):-100;level(db);
                 long now=System.currentTimeMillis();
@@ -307,7 +311,7 @@ public final class NativeRecorder implements Runnable {
                 deferInputRecovery(e);
               }
             }
-        }catch(InterruptedException ignored){}catch(Exception e){error=e.getMessage();service.recordError(error);RestNotifications.send(ctx,"녹음을 계속하지 못했습니다",error==null?"앱을 열어 확인해 주세요":error);}
+        }catch(InterruptedException ignored){}catch(Exception e){error=e.getMessage();RecordingSession.reason(ctx,error);service.recordError(error);RestNotifications.send(ctx,"녹음을 계속하지 못했습니다",error==null?"앱을 열어 확인해 주세요":error);}
         finally{try{finishFile();}catch(Exception e){error=e.getMessage();service.recordError(error);}closeInput();
             publisher.shutdown();
             try { publisher.awaitTermination(120,java.util.concurrent.TimeUnit.SECONDS); } catch(InterruptedException ignored) { }

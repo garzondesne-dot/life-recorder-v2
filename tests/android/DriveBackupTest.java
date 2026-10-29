@@ -69,4 +69,12 @@ public class DriveBackupTest {
   DriveBackup.prefs(c).edit().putLong("checkedVersion",2).commit();assertFalse(DriveBackup.status(c).getBoolean("needsCheck"));
  }
 
+ @Test public void economyAndManualRequestsUseDifferentConstraints()throws Exception{
+  androidx.work.Constraints saved=DriveBackup.uploadConstraints(true,false),immediate=DriveBackup.uploadConstraints(false,false),manual=DriveBackup.uploadConstraints(true,true);
+  assertEquals(androidx.work.NetworkType.UNMETERED,saved.getRequiredNetworkType());assertTrue(saved.requiresBatteryNotLow());
+  assertEquals(androidx.work.NetworkType.CONNECTED,immediate.getRequiredNetworkType());assertFalse(immediate.requiresBatteryNotLow());
+  assertEquals(androidx.work.NetworkType.CONNECTED,manual.getRequiredNetworkType());assertFalse(manual.requiresBatteryNotLow());assertEquals(60,DriveBackup.intervalMinutes(true));assertEquals(15,DriveBackup.intervalMinutes(false));assertTrue(DriveBackup.economy(c));
+ }
+ @Test public void cleanupJobNeverUploadsNewAudioEvenWithPendingLocalFiles()throws Exception{assertFalse(DriveBackup.hasWork(c,"a",true));DriveBackup.run(c,api,"a",()->{},true);assertEquals(0,api.uploads);}
+
 }

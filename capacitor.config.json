@@ -1,6 +1,6 @@
 {
   "appId": "com.lifeblackbox.recorder",
-  "appName": "Life Blackbox",
+  "appName": "LifeRecorder",
   "webDir": "www",
   "android": {
     "webContentsDebuggingEnabled": true
