@@ -64,4 +64,9 @@ public class DriveBackupTest {
   int uploads=api.uploads;addAudio(600);DriveBackup.run(c,api,"a",()->{});assertEquals(uploads,api.uploads);
  }
 
+ @Test public void newPublicationCannotLookFullyBackedUpBeforeWorkerChecks()throws Exception{
+  DriveBackup.prefs(c).edit().putLong("requestedVersion",2).putLong("checkedVersion",1).putLong("lastSuccess",123).commit();assertTrue(DriveBackup.status(c).getBoolean("needsCheck"));
+  DriveBackup.prefs(c).edit().putLong("checkedVersion",2).commit();assertFalse(DriveBackup.status(c).getBoolean("needsCheck"));
+ }
+
 }
