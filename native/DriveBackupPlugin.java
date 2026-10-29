@@ -17,7 +17,7 @@ public class DriveBackupPlugin extends Plugin {
   new Thread(()->{try{
    JSONObjectUser user=new JSONObjectUser(new DriveHttp(auth.getAccessToken(),()->{}).about());
    DriveBackup.stop(getContext());android.content.SharedPreferences p=DriveBackup.prefs(getContext());DriveBackup.instance(getContext());
-   if(!p.edit().putString("account",user.id).putString("email",user.email).putString("generation",UUID.randomUUID().toString()).putBoolean("enabled",true).putString("error","").commit())throw new Exception();
+   if(!p.edit().putString("account",user.id).putString("email",user.email).putString("generation",UUID.randomUUID().toString()).putBoolean("enabled",true).putLong("lastSuccess",0).putInt("pending",0).putString("error","").commit())throw new Exception();
    DriveBackup.schedule(getContext());call.resolve(new JSObject(DriveBackup.status(getContext()).toString()));
   }catch(Exception e){call.reject("Google 연결 확인 실패. Drive API 사용 설정과 Android OAuth 패키지명·SHA-1을 확인해 주세요.");}},"Drive-Connect").start();
  }

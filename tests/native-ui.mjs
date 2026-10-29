@@ -9,7 +9,8 @@ const date=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMont
 const files=Array.from({length:10},(_,i)=>({name:`LBB_${date().replaceAll('-','')}_1200${String(i).padStart(2,'0')}.m4a`,uri:`content://recording/${i}`,size:10000,created:Date.now()-1000,durMs:500,days:[date()]}));
 const BB={status:async()=>({running,sleeping:false,db:-40,recMs:500}),listRecordings:async()=>({files}),configure:async()=>{},start:async()=>{running=true;},stop:async()=>{stops++;running=false;},notificationStatus:async()=>({allowed:false}),launchExport:async()=>({token:null})};
 const EX={prepareSnapshot:async({date})=>{prepares++;return {date,token:'123',cutoff:Date.now(),files:[...files]};},shareBatch:async o=>{shares++;calls.push(o);return {direct:true};},copyPrompt:async()=>{}};
-const cap={isNativePlatform:()=>true,Plugins:{BlackboxService:BB,RecordingExport:EX}};const main=el(),document={body:el(),activeElement:null,visibilityState:'visible',getElementById:id=>elements.get(id),querySelector:()=>main,querySelectorAll:()=>[],createElement:el,addEventListener(){}};
+let driveConnections=0,driveSyncs=0,driveDisconnects=0,driveEnabled=false;const DB={status:async()=>({enabled:driveEnabled,email:'test@example.invalid',lastSuccess:1,backedUp:2,pending:0,error:''}),connect:async({consent})=>{assert.equal(consent,true);driveConnections++;driveEnabled=true;},sync:async()=>{driveSyncs++;},disconnect:async()=>{driveDisconnects++;driveEnabled=false;}};
+const cap={isNativePlatform:()=>true,Plugins:{BlackboxService:BB,RecordingExport:EX,DriveBackup:DB}};const main=el(),document={body:el(),activeElement:null,visibilityState:'visible',getElementById:id=>elements.get(id),querySelector:()=>main,querySelectorAll:()=>[],createElement:el,addEventListener(){}};
 const context={console,window:{Capacitor:cap,confirm:()=>true},Capacitor:cap,document,Date,Map,Set,JSON,Math,Promise,Intl,performance:{now:()=>now},localStorage:{getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)},setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),requestAnimationFrame:fn=>{frames.set(++seq,fn);return seq;},cancelAnimationFrame:id=>frames.delete(id)};vm.createContext(context);vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],context);
 const run=code=>vm.runInContext(code,context),flush=()=>new Promise(r=>setImmediate(r));await flush();
 await run('startRecord()');assert.equal(running,true);await run('stopRecord()');await run('poll()');assert.equal(running,false);
@@ -54,3 +55,11 @@ assert.match(run("recordingLabel({name:'LBB_20261026_100000_000_W1792976400000_M
 run("state.all=[{name:'revision.m4a',uri:'content://new/revision',size:200,created:Date.now()}];history[state.date]={gemini:{ids:{old:123},everComplete:true}};renderArchive()");
 assert.ok(elements.get('historyList').innerHTML.includes('새 녹음 1개 · 다시 확인 필요'));
 console.log('Window range labels / superseded export confirmation requests review: PASS');
+
+assert.equal(driveConnections,0,'startup must never request Google authorization');
+context.window.confirm=()=>false;elements.get('driveConnect').onclick();assert.equal(driveConnections,0,'upload/deletion disclosure must be acknowledged');
+context.window.confirm=()=>true;await elements.get('driveConnect').onclick();assert.equal(driveConnections,1);assert.equal(elements.get('driveSync').hidden,false);assert.ok(elements.get('driveStatus').textContent.includes('백업 확인됨'));
+await elements.get('driveSync').onclick();assert.equal(driveSyncs,1);
+context.window.confirm=()=>false;elements.get('driveDisconnect').onclick();assert.equal(driveDisconnects,0);
+context.window.confirm=()=>true;await elements.get('driveDisconnect').onclick();assert.equal(driveDisconnects,1);assert.equal(elements.get('driveConnect').hidden,false);
+console.log('Drive opt-in disclosure / no startup consent / explicit backup request / disconnect confirmation: PASS');

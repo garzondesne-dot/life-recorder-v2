@@ -53,4 +53,15 @@ public class DriveBackupTest {
  @Test public void unrelatedRemoteIsNeverDeleted()throws Exception{DriveBackup.run(c,api,"a",()->{});JSONObject ledger=DriveBackup.read(c,"a");JSONObject entry=ledger.getJSONObject(DrivePolicy.key(name));entry.put("lastDay","2000-01-01");DriveBackup.write(c,"a",ledger);api.remote.get(entry.getString("id")).getJSONObject("appProperties").put("instance","someone-else");c.getSharedPreferences("recorder-settings",0).edit().putInt("retentionDays",2).commit();try{DriveBackup.run(c,api,"a",()->{});fail();}catch(IOException expected){}assertEquals(0,api.deletes);}
  @Test public void accountLedgersAreIsolatedAndGuardStopsNetwork()throws Exception{DriveBackup.run(c,api,"a",()->{});assertEquals(0,DriveBackup.read(c,"b").length());int uploaded=api.uploads;try{DriveBackup.run(c,api,"b",()->{throw new IllegalStateException("disconnect");});fail();}catch(IllegalStateException expected){}assertEquals(uploaded,api.uploads);}
  @Test public void retentionBoundaryAndNoDeleteMode()throws Exception{long now=System.currentTimeMillis();String first=RetentionManager.oldestKeptDay(now,2);assertFalse(DrivePolicy.expired(first,2,now));assertFalse(DrivePolicy.expired("2000-01-01",0,now));assertTrue(DrivePolicy.expired("2000-01-01",2,now));}
+ @Test public void dailyTextUpdatesInPlaceAndUnmergedFragmentsNeverOverwrite()throws Exception{
+  JSONObject entry=new JSONObject().put("name",name).put("created",stamp).put("duration",1000).put("spans",new JSONArray());
+  DailyLog.write(DailyLog.manifest(c,day),new JSONObject().put("audio",entry));
+  DriveBackup.run(c,api,"a",()->{});assertEquals(2,api.remote.size());assertEquals(2,api.ids);
+  JSONObject ledger=DriveBackup.read(c,"a");String textId=ledger.getJSONObject("txt:"+day).getString("id");
+  entry.put("spans",new JSONArray().put(new JSONObject().put("start",stamp).put("end",stamp+1000).put("from",0).put("to",1000)));
+  DailyLog.write(DailyLog.manifest(c,day),new JSONObject().put("audio",entry));DriveBackup.run(c,api,"a",()->{});
+  assertEquals(2,api.remote.size());assertEquals(2,api.ids);assertEquals(textId,DriveBackup.read(c,"a").getJSONObject("txt:"+day).getString("id"));
+  int uploads=api.uploads;addAudio(600);DriveBackup.run(c,api,"a",()->{});assertEquals(uploads,api.uploads);
+ }
+
 }
