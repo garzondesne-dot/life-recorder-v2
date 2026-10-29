@@ -22,7 +22,7 @@ final class RecordingSession {
  static void reason(Context c,String reason){prefs(c).edit().putString("reason",reason==null?"":reason).commit();}
  static void resumed(Context c){prefs(c).edit().putBoolean("awaitingRest",false).putLong("resumedAt",System.currentTimeMillis()).putString("reason","").commit();}
  static boolean due(Context c,long now){SharedPreferences p=prefs(c);return p.getBoolean("active",false)&&p.getBoolean("awaitingRest",false)&&p.getInt("boot",-1)==boot(c)&&p.getLong("wakeAt",0)>0&&now>=p.getLong("wakeAt",0);}
- static void fired(Context c,long expected){SharedPreferences p=prefs(c);if(!p.getBoolean("active",false)||expected!=p.getLong("wakeAt",0)||p.getInt("boot",-1)!=boot(c))return;
+ static void fired(Context c,long expected){SharedPreferences p=prefs(c);if(!p.getBoolean("active",false)||!p.getBoolean("awaitingRest",false)||expected!=p.getLong("wakeAt",0)||p.getInt("boot",-1)!=boot(c))return;
   p.edit().putLong("firedAt",System.currentTimeMillis()).commit();NativeRecorder r=NativeRecorder.instance;BlackboxService service=BlackboxService.live;
   if(r!=null&&service!=null){service.alarmWake();r.wakeForSchedule();}else{reason(c,"휴식 중 녹음 프로세스 종료 · 알림을 눌러 재개해 주세요");notifyNeedsResume(c);}
  }

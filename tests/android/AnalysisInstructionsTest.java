@@ -12,7 +12,9 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class) @Config(sdk=29)
 public class AnalysisInstructionsTest {
  Context c;
- @Before public void setup(){c=RuntimeEnvironment.getApplication();c.getSharedPreferences("analysis-profile-v3",0).edit().clear().commit();}
+ @Before public void setup()throws Exception{resetProviderCache();c=RuntimeEnvironment.getApplication();c.getSharedPreferences("analysis-profile-v3",0).edit().clear().commit();}
+ @After public void teardown()throws Exception{resetProviderCache();}
+ static void resetProviderCache()throws Exception{java.lang.reflect.Field f=androidx.core.content.FileProvider.class.getDeclaredField("sCache");f.setAccessible(true);((java.util.Map<?,?>)f.get(null)).clear();}
  @Test public void preferencesAppearInDailyTextInOrderWithoutInventedTranscript()throws Exception{
   AnalysisInstructions.save(c,new JSONObject().put("priorities",new JSONArray("[\"todo\",\"speech\",\"todo\",\"invalid\"]")).put("length","short").put("extra","부탁하는 표현"));String text=DailyLog.render(c,"2026-10-30");
   assertTrue(text.indexOf("1순위: 할 일·약속")<text.indexOf("2순위: 언어습관·말하기"));assertTrue(text.contains("핵심만 짧게"));assertTrue(text.contains("전사문이 아닙니다"));assertTrue(text.contains("부탁하는 표현"));assertFalse(text.contains("서환"));assertFalse(text.contains("3순위"));

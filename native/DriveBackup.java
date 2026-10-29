@@ -40,7 +40,7 @@ final class DriveBackup {
  static AtomicFile file(Context c,String account)throws Exception{File dir=new File(c.getFilesDir(),"drive-backup");dir.mkdirs();return new AtomicFile(new File(dir,hash(account)+".json"));}
  static synchronized JSONObject read(Context c,String account)throws Exception{AtomicFile f=file(c,account);try{return new JSONObject(new String(f.readFully(),StandardCharsets.UTF_8));}catch(FileNotFoundException e){if(f.getBaseFile().exists()||new File(f.getBaseFile().getPath()+".bak").exists())throw e;return new JSONObject();}}
  static synchronized void write(Context c,String account,JSONObject ledger)throws Exception{DailyLog.write(file(c,account),ledger);}
- static boolean batteryLow(Context c){Intent i=c.registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));return i!=null&&i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,100)*100/Math.max(1,i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,100))<20;}
+ static boolean batteryLow(Context c){Intent i=c.registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));return i!=null&&i.getBooleanExtra("battery_low",false);}
  static int days(Context c){return c.getSharedPreferences("recorder-settings",0).getInt("retentionDays",0);}
  static boolean expired(Context c,String day){return DrivePolicy.expired(day,days(c),System.currentTimeMillis());}
  static JSONObject tags(String instance,String key,String day)throws Exception{return new JSONObject().put("app","LifeRecorder").put("instance",instance).put("key",key).put("day",day);}
