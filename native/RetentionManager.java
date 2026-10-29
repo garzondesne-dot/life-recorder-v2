@@ -15,7 +15,7 @@ final class RetentionManager {
  static boolean supported(int days){return days==2||days==7||days==15||days==30||days==60;}
  static String oldestKeptDay(long now,int days){Calendar c=Calendar.getInstance();c.setTimeInMillis(now);c.add(Calendar.DATE,-days+1);return DailyLog.day(c.getTimeInMillis());}
  static void request(Context context){Context c=context.getApplicationContext();int days=c.getSharedPreferences("recorder-settings",0).getInt("retentionDays",0);if(!supported(days)||!busy.compareAndSet(false,true))return;
-  new Thread(()->{try{sweep(c,days,System.currentTimeMillis());}catch(Exception e){android.util.Log.e("LifeRecorder","Cleanup deferred",e);}finally{busy.set(false);}},"Recording-Cleanup").start();
+  new Thread(()->{try{sweep(c,days,System.currentTimeMillis());}catch(Exception e){android.util.Log.e("LifeRecorder","Cleanup deferred",e);}finally{busy.set(false);DriveBackup.request(c);}},"Recording-Cleanup").start();
  }
  static void sweep(Context c,int days,long now)throws Exception{synchronized(ExportSnapshot.class){sweepLocked(c,days,now);}}
  static void sweepLocked(Context c,int days,long now)throws Exception{

@@ -22,7 +22,7 @@ final class WindowMerger {
  static volatile boolean working;
  private static final AtomicBoolean requested=new AtomicBoolean();
  static void request(Context context){Context c=context.getApplicationContext();if(!requested.compareAndSet(false,true))return;
-  new Thread(()->{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);try{reconcile(c);}finally{requested.set(false);}},"Window-Merge").start();}
+  new Thread(()->{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);try{reconcile(c);}finally{requested.set(false);DriveBackup.request(c);}},"Window-Merge").start();}
  static File root(Context c){File f=new File(c.getFilesDir(),"window-merges");f.mkdirs();return f;}
  static void reconcile(Context c){synchronized(ExportSnapshot.class){working=true;lastError="";try{
   ExportSnapshot.prune(c,System.currentTimeMillis());

@@ -32,12 +32,36 @@ public class MainActivity extends BridgeActivity {
         try{folderLauncher.launch(null);}catch(Exception e){folderCall=null;folderPlugin=null;call.reject(e.getMessage());}
     }
 
+    private com.getcapacitor.PluginCall driveCall;
+    private DriveBackupPlugin drivePlugin;
+    private final androidx.activity.result.ActivityResultLauncher<androidx.activity.result.IntentSenderRequest> driveLauncher =
+        registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult(), result -> {
+            com.getcapacitor.PluginCall call=driveCall;DriveBackupPlugin plugin=drivePlugin;driveCall=null;drivePlugin=null;
+            if(call==null)return;
+            if(result.getResultCode()!=android.app.Activity.RESULT_OK){call.reject("Google 연결을 취소했습니다");return;}
+            try{plugin.accept(com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(result.getData()),call);}
+            catch(Exception e){call.reject("Google 권한 확인 실패. OAuth 설정과 계정을 확인해 주세요.");}
+        });
+    public void authorizeDrive(com.getcapacitor.PluginCall call,DriveBackupPlugin plugin){
+        if(driveCall!=null){call.reject("Google 연결 창이 열려 있습니다");return;}driveCall=call;drivePlugin=plugin;
+        com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).authorize(
+            com.google.android.gms.auth.api.identity.AuthorizationRequest.builder().setRequestedScopes(java.util.Collections.singletonList(new com.google.android.gms.common.api.Scope(DriveBackup.SCOPE))).build())
+            .addOnSuccessListener(auth->{if(auth.hasResolution()){
+                try{driveLauncher.launch(new androidx.activity.result.IntentSenderRequest.Builder(auth.getPendingIntent().getIntentSender()).build());}
+                catch(Exception e){driveCall=null;drivePlugin=null;call.reject("Google 연결 창 실행 실패");}
+            }else{driveCall=null;drivePlugin=null;plugin.accept(auth,call);}})
+            .addOnFailureListener(e->{driveCall=null;drivePlugin=null;call.reject("Google 연결 실패. Google Cloud에서 Drive API와 Android OAuth 패키지명·서명 SHA-1 등록을 확인해 주세요.");});
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingExportPlugin.class);
+        registerPlugin(DriveBackupPlugin.class);
         registerPlugin(BlackboxServicePlugin.class);   // super.onCreate 이전에 등록해야 함
         super.onCreate(savedInstanceState);
         if(!getPreferences(0).getBoolean("driveRemoved",false)){getSharedPreferences("drive",0).edit().clear().apply();getPreferences(0).edit().putBoolean("driveRemoved",true).apply();}
+
+        DriveBackup.schedule(this);
 
         // 안드로이드 15+ 강제 전체화면(edge-to-edge): 상태바·내비게이션바·폴드 힌지 영역만큼 화면을 안쪽으로 줄여 하단 잘림 방지
         getWindow().getDecorView().setBackgroundColor(android.graphics.Color.BLACK);
