@@ -13,7 +13,7 @@ if (!fs.existsSync(android)) {
 // 1) Java 소스 복사
 const pkgDir = path.join(android, 'app/src/main/java/com/lifeblackbox/recorder');
 fs.mkdirSync(pkgDir, { recursive: true });
-for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java', 'RecordingWindow.java', 'WindowMerger.java', 'DrivePolicy.java', 'DriveHttp.java', 'DriveBackup.java', 'DriveBackupPlugin.java', 'DriveBackupWorker.java']) {
+for (const f of ['MainActivity.java', 'BlackboxService.java', 'BlackboxServicePlugin.java', 'NativeRecorder.java', 'RecordingStore.java', 'RecordingExportPlugin.java', 'DailyLog.java', 'TimelineSegments.java', 'RecordingPublication.java', 'ExportSnapshot.java', 'ExportFileProvider.java', 'ReminderPolicy.java', 'ExportReminder.java', 'RestSchedule.java', 'RestNotifications.java', 'RetentionManager.java', 'RecordingWindow.java', 'WindowMerger.java', 'DrivePolicy.java', 'DriveHttp.java', 'DriveBackup.java', 'DriveBackupPlugin.java', 'DriveBackupWorker.java', 'RecordingSession.java', 'RestAlarmReceiver.java', 'AnalysisInstructions.java']) {
   fs.copyFileSync(path.join(root, 'native', f), path.join(pkgDir, f));
   console.log('[patch] copied', f);
 }
@@ -67,6 +67,7 @@ if (!m.includes('requestLegacyExternalStorage')) {
   m = m.replace('<application', '<application\n        android:requestLegacyExternalStorage="true"');
 }
 
+if(!m.includes('.RestAlarmReceiver'))m=m.replace('</application>','<receiver android:name=".RestAlarmReceiver" android:exported="false" /></application>');
 if (!m.includes('.BlackboxService')) {
   m = m.replace('</application>',
 `    <service
@@ -97,7 +98,7 @@ let g = fs.readFileSync(gradleFile, 'utf8');
 // Remove obsolete account/sync libraries when reusing an existing Android project.
 g = g.replace(/^.*implementation ['"]com\.google\.android\.gms:play-services-auth:[^\n]*\n?/gm, '')
      .replace(/^.*implementation ['"]androidx\.work:work-runtime:[^\n]*\n?/gm, '');
-g = g.replace(/versionCode \d+/, 'versionCode 12').replace(/versionName "[^"]*"/, 'versionName "2.4.6"');
+g = g.replace(/versionCode \d+/, 'versionCode 13').replace(/versionName "[^"]*"/, 'versionName "3.0.0"');
 // Replace the previous pinned block as well as legacy sync dependencies, idempotently.
 g=g.replace(/\n\/\/ LIFE_DRIVE_BACKUP[\s\S]*?\/\/ END_LIFE_DRIVE_BACKUP\n/g,'\n');
 g+=`\n// LIFE_DRIVE_BACKUP
@@ -145,6 +146,8 @@ dependencies {
 `);
 }
 
+
+const stringsFile=path.join(resDst,'values/strings.xml');if(fs.existsSync(stringsFile)){let t=fs.readFileSync(stringsFile,'utf8');t=t.replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g,'$1LifeRecorder');fs.writeFileSync(stringsFile,t);}
 
 // Keep launch surfaces true black in both system light and dark modes.
 const stylesFile=path.join(resDst,'values/styles.xml');

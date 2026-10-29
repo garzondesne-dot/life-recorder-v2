@@ -22,6 +22,13 @@ public class DriveBackupPlugin extends Plugin {
   }catch(Exception e){call.reject("Google 연결 확인 실패. Drive API 사용 설정과 Android OAuth 패키지명·SHA-1을 확인해 주세요.");}},"Drive-Connect").start();
  }
  static final class JSONObjectUser {final String id,email;JSONObjectUser(org.json.JSONObject o)throws Exception{id=o.getString("permissionId");email=o.getString("emailAddress");if(id.isEmpty()||email.isEmpty())throw new Exception();}}
- @PluginMethod public void sync(PluginCall call){if(!DriveBackup.prefs(getContext()).getBoolean("enabled",false)){call.reject("먼저 Google 계정을 연결해 주세요");return;}DriveBackup.schedule(getContext());call.resolve();}
+ @PluginMethod public void economy(PluginCall call){DriveBackup.setEconomy(getContext(),Boolean.TRUE.equals(call.getBoolean("enabled",true)));call.resolve();}
+ private final java.util.concurrent.atomic.AtomicBoolean preparingBackup=new java.util.concurrent.atomic.AtomicBoolean();
+ @PluginMethod public void sync(PluginCall call){if(!DriveBackup.prefs(getContext()).getBoolean("enabled",false)){call.reject("먼저 Google 계정을 연결해 주세요");return;}if(!preparingBackup.compareAndSet(false,true)){call.reject("백업 자료를 준비 중입니다");return;}
+  final String generation=DriveBackup.prefs(getContext()).getString("generation","");
+  new Thread(()->{try{NativeRecorder recorder=NativeRecorder.instance;if(recorder!=null)recorder.prepareBackup().get(180,java.util.concurrent.TimeUnit.SECONDS);
+   if(!DriveBackup.prefs(getContext()).getBoolean("enabled",false)||!generation.equals(DriveBackup.prefs(getContext()).getString("generation","")))throw new Exception("연결이 변경되었습니다");DriveBackup.manual(getContext());call.resolve();
+  }catch(Exception e){call.reject("지금 백업 준비 실패: "+(e.getCause()!=null?e.getCause().getMessage():e.getMessage()));}finally{preparingBackup.set(false);}},"Drive-Manual-Backup").start();
+ }
  @PluginMethod public void disconnect(PluginCall call){DriveBackup.stop(getContext());DriveBackup.prefs(getContext()).edit().remove("email").remove("account").putString("error","").apply();call.resolve();}
 }

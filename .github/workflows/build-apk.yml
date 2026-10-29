@@ -1,8 +1,8 @@
-name: Build Life Blackbox v2.4.6
+name: Build LifeRecorder v3.0.0
 
 on:
   push:
-    branches: [main, master, "feature/v2.4.6-drive-backup"]
+    branches: [main, master, "feature/v3.0.0"]
   workflow_dispatch:
 
 permissions:
@@ -60,12 +60,12 @@ jobs:
           else echo "Chrome unavailable; UI preview skipped"; fi
 
       - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v2.4.6.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v3.0.0.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeRecorder-v2.4.6-APK
-          path: LifeRecorder-v2.4.6.apk
+          name: LifeRecorder-v3.0.0-APK
+          path: LifeRecorder-v3.0.0.apk
 
       - uses: actions/upload-artifact@v4
         if: always()

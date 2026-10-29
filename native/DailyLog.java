@@ -37,9 +37,9 @@ final class DailyLog {
         }
     }
     static synchronized String render(Context c,String date)throws Exception{
-        return renderEntries(read(c,date),date);
+        return AnalysisInstructions.render(c)+renderEntries(read(c,date),date);
     }
-    private static String renderEntries(JSONObject all,String date)throws Exception{StringBuilder text=new StringBuilder("Life Blackbox 하루 타임로그 — "+date+"\n기기 로컬 시간대: "+TimeZone.getDefault().getID()+"\n이 문서는 전사문이 아닙니다. 대화 내용은 음성 또는 별도 전사문을 분석하세요.\n재생 위치는 PCM 기준 근사값이며 AAC 인코딩 지연·기기 버퍼로 차이가 날 수 있습니다.\n과거 파일의 정확한 무음 구간은 추정하지 않습니다.\n\n");
+    private static String renderEntries(JSONObject all,String date)throws Exception{StringBuilder text=new StringBuilder("LifeRecorder 하루 타임로그 — "+date+"\n기기 로컬 시간대: "+TimeZone.getDefault().getID()+"\n이 문서는 전사문이 아닙니다. 대화 내용은 음성 또는 별도 전사문을 분석하세요.\n재생 위치는 PCM 기준 근사값이며 AAC 인코딩 지연·기기 버퍼로 차이가 날 수 있습니다.\n과거 파일의 정확한 무음 구간은 추정하지 않습니다.\n\n");
         List<JSONObject> entries=new ArrayList<>();Iterator<String> keys=all.keys();while(keys.hasNext())entries.add(all.getJSONObject(keys.next()));entries.sort(Comparator.comparingLong(o->o.optLong("created")));
         for(JSONObject entry:entries){text.append("파일: ").append(entry.getString("name")).append('\n');JSONArray spans=entry.getJSONArray("spans");
             if(spans.length()==0)text.append("구간별 시각 정보 없음 (이전 버전 또는 복구 기록)\n");
@@ -57,7 +57,7 @@ final class DailyLog {
         for(String name:names){boolean found=false;java.util.Iterator<String> it=filtered.keys();while(it.hasNext())if(name.equals(filtered.getJSONObject(it.next()).optString("name")))found=true;
             if(!found)filtered.put("legacy:"+name,new JSONObject().put("name",name).put("created",0).put("spans",new JSONArray()));
         }
-        return "내보내기 기준: "+dateTime(cutoff)+"\n"+renderEntries(filtered,date);
+        return AnalysisInstructions.render(c)+"내보내기 기준: "+dateTime(cutoff)+"\n"+renderEntries(filtered,date);
     }
     static synchronized Uri publish(Context c,String date)throws Exception{
         if(!date.matches("\\d{4}-\\d{2}-\\d{2}"))throw new Exception("날짜 형식 오류");

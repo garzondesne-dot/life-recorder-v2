@@ -39,5 +39,10 @@ final class ExportSnapshot {
  static JSONObject read(Context c,String token)throws Exception{
   try(InputStream in=new FileInputStream(new File(dir(c,token),"context.json"))){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return new JSONObject(out.toString("UTF-8"));}
  }
+ static synchronized Uri logWithPrompt(Context c,JSONObject snapshot,String prompt)throws Exception{
+  if(prompt==null||prompt.length()>30000)throw new IOException("분석 지침 크기 오류");String token=UUID.randomUUID().toString();File folder=dir(c,token);folder.mkdirs();JSONObject copy=new JSONObject(snapshot.toString()).put("token",token);File source=new File(dir(c,snapshot.getString("token")),snapshot.getString("logName"));
+  try(FileOutputStream out=new FileOutputStream(new File(folder,copy.getString("logName")))){out.write(("[이번 내보내기 분석 요청 · 아래 기본 선호보다 우선 적용]\n"+prompt+"\n[이번 요청 끝]\n\n").getBytes(StandardCharsets.UTF_8));try(InputStream in=new FileInputStream(source)){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}out.getFD().sync();}
+  try(FileOutputStream out=new FileOutputStream(new File(folder,"context.json"))){out.write(copy.toString().getBytes(StandardCharsets.UTF_8));out.getFD().sync();}return logUri(c,copy);
+ }
  static Uri logUri(Context c,JSONObject snapshot)throws Exception{return FileProvider.getUriForFile(c,c.getPackageName()+".exports",new File(dir(c,snapshot.getString("token")),snapshot.getString("logName")));}
 }
