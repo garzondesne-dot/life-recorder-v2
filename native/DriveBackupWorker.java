@@ -20,7 +20,7 @@ public class DriveBackupWorker extends Worker {
    if(auth.hasResolution()||auth.getAccessToken()==null){p.edit().putString("error","Google 권한 확인 필요 · 설정에서 다시 연결해 주세요").apply();return Result.success();}
    token=auth.getAccessToken();DriveHttp api=new DriveHttp(token,guard);if(!account.equals(api.about().getString("permissionId")))throw new IllegalStateException("Google 계정이 달라 백업을 중단했습니다");
    // Local reconciliation is shared with export; network I/O runs outside its lock.
-   boolean more=DriveBackup.run(c,api,account,guard);guard.run();p.edit().putString("error","").putLong("lastSuccess",System.currentTimeMillis()).apply();return more?Result.retry():Result.success();
+   boolean more=DriveBackup.run(c,api,account,guard);guard.run();more=DriveBackup.hasWork(c,account)||more;p.edit().putString("error","").putLong("lastSuccess",System.currentTimeMillis()).apply();return more?Result.retry():Result.success();
   }catch(Exception e){if(isStopped()||!generation.equals(p.getString("generation","")))return Result.success();
    String message=e instanceof DriveHttp.Failure?e.getMessage():"백업 대기 · 네트워크 또는 Google 연결을 확인해 주세요";p.edit().putString("error",message).apply();
    if(e instanceof DriveHttp.Failure&&((DriveHttp.Failure)e).code==401&&token!=null)try{Tasks.await(Identity.getAuthorizationClient(c).clearToken(ClearTokenRequest.builder().setToken(token).build()),10,TimeUnit.SECONDS);}catch(Exception ignored){}
