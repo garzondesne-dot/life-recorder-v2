@@ -1,3 +1,7 @@
+# LifeRecorder 3.1.0 — 보고서 미리보기
+
+이번 버전의 사용법·범위·보관 한계는 [보고서 미리보기 안내](docs/v3.1.0-reports-preview.md)를 확인하세요. 실제 API 분석·Google Tasks 등록·보고서 Drive 백업은 아직 연결하지 않았습니다.
+
 # LifeRecorder v3.0.0
 
 휴대전화 내장 마이크로 녹음하고, 무음 구간을 건너뛰며, 기록을 날짜별로 확인하는 Android 테스트 앱입니다. Capacitor 웹 화면과 네이티브 Java 녹음 서비스를 사용합니다.

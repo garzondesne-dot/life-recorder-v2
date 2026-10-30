@@ -59,6 +59,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingExportPlugin.class);
         registerPlugin(DriveBackupPlugin.class);
+        registerPlugin(ReportLibraryPlugin.class);
         registerPlugin(BlackboxServicePlugin.class);   // super.onCreate 이전에 등록해야 함
         super.onCreate(savedInstanceState);
         if(!getPreferences(0).getBoolean("driveRemoved",false)){getSharedPreferences("drive",0).edit().clear().apply();getPreferences(0).edit().putBoolean("driveRemoved",true).apply();}

@@ -1,8 +1,8 @@
-name: Build LifeRecorder v3.0.0
+name: Build LifeRecorder v3.1.0
 
 on:
   push:
-    branches: [main, master, "feature/v3.0.0"]
+    branches: [main, master, "feature/v3.1.0"]
   workflow_dispatch:
 
 permissions:
@@ -60,12 +60,12 @@ jobs:
           else echo "Chrome unavailable; UI preview skipped"; fi
 
       - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v3.0.0.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk LifeRecorder-v3.1.0.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifeRecorder-v3.0.0-APK
-          path: LifeRecorder-v3.0.0.apk
+          name: LifeRecorder-v3.1.0-APK
+          path: LifeRecorder-v3.1.0.apk
 
       - uses: actions/upload-artifact@v4
         if: always()

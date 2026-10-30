@@ -16,11 +16,11 @@ try {
   assert.ok(manifest.includes('stopWithTask="false"'));assert.equal((manifest.match(/android.permission.RECORD_AUDIO/g)||[]).length,1);
   const gradle=fs.readFileSync(path.join(tmp,'android/app/build.gradle'),'utf8');
   assert.equal((gradle.match(/play-services-auth:/g)||[]).length,1);assert.equal((gradle.match(/LIFE_FIXED_SIGNING/g)||[]).length,1);
-  assert.ok(gradle.includes('versionCode 13'));
+  assert.ok(gradle.includes('versionCode 14'));
   for(const f of ['NativeRecorder.java','RecordingExportPlugin.java','RecordingStore.java'])assert.ok(fs.existsSync(path.join(main,'java/com/lifeblackbox/recorder',f)));
   assert.equal((manifest.match(/com.google.android.apps.bard/g)||[]).length,1);
   assert.equal((gradle.match(/androidx.work:work-runtime:/g)||[]).length,1);assert.ok(manifest.includes('android:allowBackup="false"'));assert.ok(manifest.includes('ACCESS_NETWORK_STATE'));
-  assert.ok(manifest.includes('ExportFileProvider'));assert.ok(manifest.includes('RestAlarmReceiver'));assert.ok(gradle.includes('versionName "3.0.0"'));
+  assert.ok(manifest.includes('ExportFileProvider'));assert.ok(manifest.includes('RestAlarmReceiver'));assert.ok(gradle.includes('versionName "3.1.0"'));
   assert.ok(fs.existsSync(path.join(main,'res/xml/export_paths.xml')));
   console.log('Android patch permissions / service survival / dependencies / signing / idempotence: PASS');
 }finally{fs.rmSync(tmp,{recursive:true,force:true});}
