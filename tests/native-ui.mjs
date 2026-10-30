@@ -75,3 +75,15 @@ elements.get('usageAccept').checked=true;await elements.get('guideNext').onclick
 run('guide.step=4;showGuide()');elements.get('guideLength').value='short';elements.get('guideLength').onchange();assert.equal(run('profile.length'),'short');assert.ok(run('buildPrompt()').includes('핵심만 짧게'));run('guide.step=6;showGuide()');await elements.get('guideNext').onclick();assert.equal(saved.get('lbb_guide_v3'),'done');assert.ok(saved.has('lbb_v24_profile'));
 elements.get('driveEconomy').checked=false;context.window.confirm=()=>false;elements.get('driveEconomy').onchange();assert.equal(elements.get('driveEconomy').checked,true);context.window.confirm=()=>true;elements.get('driveEconomy').checked=false;await elements.get('driveEconomy').onchange();await flush();assert.equal(driveEconomy,false);
 console.log('Usage gate / optional permissions / tutorial preference persistence / economy opt-out confirmation: PASS');
+
+// Report phase 1: no fake analysis, imported text is escaped and original versions remain separate.
+assert.equal(run('reportDateOK("2026-02-30")'),false);assert.equal(run('reportDateOK("2026-10-30")'),true);
+run("profile.priorities=['todo','speech'];profile.extra='부탁 표현';profile.length='short'");
+const parsed=run('parseReportInput(JSON.stringify({summary:["핵심"],sections:[{topic:"speech",text:"<img src=x onerror=alert(1)>"}],todos:[{title:"확인",due:""}],speakers:[{label:"A",name:"이름 확인 필요"}]}))');assert.equal(parsed.priorities.join(','),'todo,speech');assert.equal(parsed.origin,'manual-import');
+assert.throws(()=>run('parseReportInput(JSON.stringify({sample:true,summary:["sample"]}))'));
+assert.throws(()=>run('parseReportInput(JSON.stringify({summary:["x"],todos:[{title:"x",due:"2026-02-30"}]}))'));
+run('reports.report=parseReportInput(JSON.stringify({summary:["<script>bad</script>"],sections:[{topic:"speech",text:"<img src=x>"}]}));reports.sample=false;renderReport()');assert.ok(elements.get('reportSummary').innerHTML.includes('&lt;script&gt;'));assert.ok(!elements.get('reportSections').innerHTML.includes('<img'));assert.ok(elements.get('reportSections').innerHTML.includes('이 항목의 분석이 없습니다'));
+await run('openReports(state.date)');elements.get('reportSample').onclick();assert.equal(run('reports.sample'),true);assert.equal(elements.get('reportDelete').hidden,true);assert.equal(elements.get('reportSaveReview').disabled,true);assert.ok(elements.get('reportBadge').textContent.includes('실제 녹음 분석 아님'));
+elements.get('reportIncludePeople').checked=false;run('reports.people=[{id:"x",name:"PRIVATE",relation:"private",note:"secret"}]');assert.ok(!run('reportFormatRequest()').includes('PRIVATE'));elements.get('reportIncludePeople').checked=true;assert.ok(run('reportFormatRequest()').includes('PRIVATE'));assert.ok(run('reportFormatRequest()').includes('1. 할 일·약속'));assert.ok(run('reportFormatRequest()').includes('음성의 동일 화자라는 보장은 없음'));
+run('show("reports")');assert.equal(elements.get('reports').hidden,false);assert.equal(elements.get('home').hidden,true);
+console.log('Reports sample isolation / manual source / invalid dates / HTML escaping / missing analysis disclosure / explicit person inclusion: PASS');
